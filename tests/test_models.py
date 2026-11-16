@@ -31,7 +31,7 @@ _GATED = {"wenxin:dewatermark", "wenxin:erase", "wenxin:replace",
 
 
 def test_registry_shape_and_tool_types():
-    assert len(CAPABILITIES) == 19
+    assert len(CAPABILITIES) == 20
     assert all(n.startswith("wenxin:") for n in CAPABILITIES), "对外命名空间必须是 wenxin:*"
     main = sorted((c.tool_type for c in CAPABILITIES.values() if c.tool_type), key=int)
     assert len(set(main)) == 17, "同一 toolType 不得注册两个模型名（重复编号见 NOT_REGISTERED）"
@@ -82,8 +82,8 @@ def test_availability_gate_and_open():
     ok, reason = availability(cap, allow_unverified=False)
     assert not ok and "BAIDU_ALLOW_UNVERIFIED" in reason
     assert availability(cap, allow_unverified=True)[0]
-    assert len(available(allow_unverified=False)) == 9           # 19 - 10 门禁（textreplace 2026-11-16 降级）
-    assert len(available(allow_unverified=True)) == 17           # 19 - 2 legacy-only
+    assert len(available(allow_unverified=False)) == 10          # 20 - 10 门禁（+draw 已取证）
+    assert len(available(allow_unverified=True)) == 18           # 20 - 2 legacy-only
 
 
 def test_verified_caps_are_available_without_the_gate():
@@ -119,9 +119,9 @@ def test_absences_are_documented():
 def test_legacy_unlocks_exactly_the_mapped_capabilities():
     default = available(allow_unverified=False)
     with_legacy = available(allow_unverified=False, legacy=True)
-    assert len(default) == 9
+    assert len(default) == 10
     # 10 已取证 + 6 有老接口映射的未取证 = 16（另 3 项无映射，开兜底也不可用）
-    assert len(with_legacy) == 15      # 2026-11-16：textreplace 降级后 19 - 4 无映射门禁
+    assert len(with_legacy) == 16      # 20 项 - 4 无映射门禁
     assert {"wenxin:dewatermark", "wenxin:erase", "wenxin:replace",
             "wenxin:redraw", "wenxin:similar", "wenxin:bgreplace"} <= set(with_legacy)
     assert "wenxin:restyle" in with_legacy               # 主链已攻克（与老接口兜底无关）

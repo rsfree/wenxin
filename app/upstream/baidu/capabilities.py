@@ -132,6 +132,42 @@ def build_body(
     `token` / `lid` 由**调用方**传入而不再从配置直接读 —— 这样本函数保持纯函数，
     干跑才能在不触网的前提下构造请求体。
     """
+    if not cap.needs_image:
+        # ---- 文生图形状（2026-11-17 抓包）----
+        # 与 workspace 形状的三处关键差异：① 没有 IMAGE 查询项；② 没有 mcpInfo；
+        # ③ sa=bkb + enter_type=sidebar_dialog。chat_token 仍按 (token, query, lid) 计算。
+        sa_text = cap.workspace_sa or "bkb"
+        body = {
+            "message": {
+                "inputMethod": "chat_search",
+                "isRebuild": False,
+                "content": {"query": "", "agentInfo": {"agent_id": [""], "params": ""},
+                            "agentInfoList": [], "qtype": 0, "extData": {}},
+                "searchInfo": {
+                    "srcid": "", "order": "", "tplname": "", "dqaKey": "",
+                    "re_rank": str(rank), "ori_lid": ori_lid or lid, "sa": sa_text,
+                    "enter_type": cap.entry_type or "sidebar_dialog",
+                    "chatParams": {"setype": "csaitab",
+                                   "chat_samples": "WISE_NEW_CSAITAB",
+                                   "chat_token": build_chat_token(token, query_text, lid),
+                                   "scene": ""},
+                    "isPrivateChat": False,
+                    "usedModel": {"modelFunction": {"thinkMode": "0"}, "modelName": "smartMode"},
+                    "landingPageSwitch": "", "landingPage": "aitab", "ecomFrom": "",
+                    "hasLocPermission": "", "isInnovate": 2, "applid": "", "a_lid": "",
+                    "capsuleSelectMode": "fast", "showMindMap": False,
+                    "deepDecisionInfo": {"isDeepDecision": 0},
+                },
+                "from": "", "source": "pc_csaitab",
+                "query": [{"type": "TEXT", "data": {"text": {
+                    "query": query_text, "extData": "{}", "text_type": ""}}}],
+                "agent_id": "",
+            },
+            "sa": sa_text,
+            "rank": rank,
+        }
+        return body
+
     tt = cap.tool_type
     # 注：站点 UI 的「工具入口形状」（sa=searchbox_image + enter_type + 无 mcpInfo）
     # **本服务不使用**（实测只回对话文字/编辑器链接）—— 证据留在 docs/UPSTREAM.md §7。

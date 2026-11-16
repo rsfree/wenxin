@@ -124,7 +124,12 @@ def mount_admin(app: FastAPI, require_key: Callable[..., Any]) -> None:
             # 必须另外用 availability() 判 —— 从干跑结果里读门禁只会得到"全都可跑"的假象。
             usable, reason = availability(cap, allow_unverified=state.settings.ALLOW_UNVERIFIED,
                                          legacy=legacy_on)
-            payload: dict[str, Any] = {"model": name, "image": _TINY_PNG, "dry_run": True}
+            # 文生图没有输入图：payload 用 prompt；其余能力用一张极小 PNG 走通校验
+            payload: dict[str, Any] = ({"model": name, "prompt": "自检：一只毛毡柴犬",
+                                        "dry_run": True}
+                                       if not cap.needs_image
+                                       else {"model": name, "image": _TINY_PNG,
+                                             "dry_run": True})
             if cap.requires_mask:
                 payload["mask"] = _TINY_PNG
             if cap.needs_style and cap.style_table:

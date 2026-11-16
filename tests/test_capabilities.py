@@ -12,8 +12,9 @@ import json
 
 import pytest
 
-from app.errors import AuthError, UpstreamUnavailableError
+from app.errors import ApiError, AuthError, UpstreamUnavailableError
 from app.models import lookup
+from app.service import validate_request
 from app.upstream.baidu.capabilities import (
     apply_frame,
     bce_sign,
@@ -254,3 +255,34 @@ def test_extract_legacy_result_accepts_data_uri_and_bare_b64():
     assert extract_legacy_result({"picArr": []}) is None
     assert extract_legacy_result({}) is None
     assert extract_legacy_result({"picArr": [{"src": "%%%%"}]}) is None
+
+
+# ---------------------------------------------------------------- 文生图
+def test_build_body_text_only_has_no_image_and_no_mcpinfo():
+    """文生图（2026-11-17 抓包）：query 只有 TEXT、无 mcpInfo、sa=bkb。"""
+    cap = lookup("wenxin:draw")
+    b = build_body(cap, query_text="一只毛毡柴犬", image_url="", rank=1,
+                   token="t", lid="l", ori_lid="lid-x")
+    msg = b["message"]
+    si = msg["searchInfo"]
+    assert si["sa"] == "bkb" and si["enter_type"] == "sidebar_dialog"
+    assert "mcpInfo" not in si, "文生图形状没有 mcpInfo"
+    assert [q["type"] for q in msg["query"]] == ["TEXT"]
+    assert msg["query"][0]["data"]["text"]["query"] == "一只毛毡柴犬"
+    assert b["sa"] == "bkb"
+
+
+def test_draw_requires_prompt_and_rejects_image():
+    """参数面：文生图必须给 prompt；给了 image 要明确拒绝（而不是静默忽略）。"""
+    cap, image, *_ = validate_request(
+        {"model": "wenxin:draw", "prompt": "一只柴犬"})
+    assert cap.name == "wenxin:draw" and image == ""
+
+    with pytest.raises(ApiError) as e1:
+        validate_request({"model": "wenxin:draw"})
+    assert e1.value.code == "missing_prompt"
+
+    with pytest.raises(ApiError) as e2:
+        validate_request({"model": "wenxin:draw", "prompt": "x",
+                          "image": "data:image/png;base64,AA"})
+    assert e2.value.code == "unexpected_image"

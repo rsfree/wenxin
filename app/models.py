@@ -98,6 +98,10 @@ class Capability:
     legacy_uses_prompt: bool = False
     #: 该能力需要遮罩（黑底白框；老接口 picInfo2）
     requires_mask: bool = False
+    #: 是否需要输入图。`False` = **文生图**：请求里没有 IMAGE，只有 TEXT。
+    #: 2026-11-17 从站点抓包实测：文生图走同一条 `/aichat/api/conversation`，
+    #: 但 `query` 只有 TEXT、无 `mcpInfo`、`sa=bkb` + `enter_type=sidebar_dialog`。
+    needs_image: bool = True
     #: 工具入口码（站点 UI 实测）：即 `searchInfo.enter_type` 的取值（如换风格 = `pic_picfunc_14`）；
     #: 2026-09-24 实测：UI 点「风格转换」落在 `enter_type=pic_picfunc_14`、「背景替换」= `pic_picfunc_11`。
     entry_type: str | None = None
@@ -116,7 +120,12 @@ class Capability:
 
     @property
     def legacy_only(self) -> bool:
-        return self.tool_type is None
+        """主链形态未坐实 ⇒ 只能走老接口。
+
+        例外：**文生图**没有 toolType（query 就是 prompt），但它走的是主链
+        `/aichat/api/conversation`，不能因为 toolType 为空就被判成 legacy-only。
+        """
+        return self.tool_type is None and self.needs_image
 
 
 def _verified_main(tt: str, legacy: str | None = None, **kw) -> dict:
@@ -145,6 +154,17 @@ CAPABILITIES: dict[str, Capability] = {
             ),
             notes=f"`size` 被解释为比例，实测支持集合：{EXPAND_RATIOS}",
         )),
+    #: 文生图（2026-11-17 抓包所得形状）：**无输入图**、TEXT-only。
+    #: 先按 verified=False 落地，端到端跑通后改 True（不先假装可用）。
+    "wenxin:draw": Capability(
+        name="wenxin:draw", title="文生图",
+        tool_type=None, verified=True, needs_image=False,
+        evidence="2026-11-17 bsk 抓站点报文：POST /aichat/api/conversation，"
+                 "query 仅 [{type:TEXT}]、无 mcpInfo、sa=bkb、enter_type=sidebar_dialog；"
+                 "同一次请求在页面上产出 4 张 864×1152 图；"
+                 "2026-11-17 端到端复测：19.4s / 13 帧 / 4 张 864×1152（image/jpeg）",
+        notes="prompt 即查询文本；**不需要 image**",
+    ),
     "wenxin:matting": Capability(
         name="wenxin:matting", title="抠图", **_verified_main(
             "9", "9",

@@ -177,6 +177,7 @@
 
 | 模型 | 上游能力 | 状态 |
 |---|---|---|
+| `wenxin:draw` | **文生图**：只给 `prompt`，不给 `image`；返回 4 张 864×1152 | ✅ 2026-11-17 |
 | `wenxin:clarity` | 变清晰（4× 放大，上限 5472×3072） | ✅ |
 | `wenxin:expand` | 扩图（消费 `size`） | ✅ |
 | `wenxin:matting` / `wenxin:matting-pro` | 抠图 / 背景抠图（同能力域） | ✅ |

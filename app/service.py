@@ -90,12 +90,22 @@ def validate_request(
         )
 
     image = payload.get("image")
-    if not isinstance(image, str) or not image.strip():
+    if cap.needs_image and (not isinstance(image, str) or not image.strip()):
         raise ApiError(
             400, "missing_input",
             "缺少输入图片（image 字段）。接受三种形态："
             "data URI（`data:image/png;base64,...`）、http(s) URL、裸 base64",
         )
+    if not cap.needs_image:
+        # 文生图：prompt 就是查询文本，**没有 image**。空 prompt 才是缺参。
+        _p = payload.get("prompt")
+        if not isinstance(_p, str) or not _p.strip():
+            raise ApiError(400, "missing_prompt",
+                           f"「{cap.title}」用 prompt 描述要画的画面（不需要 image）",
+                           model=cap.name)
+        if isinstance(image, str) and image.strip():
+            raise ApiError(400, "unexpected_image",
+                           f"「{cap.title}」是文生图，不接受 image 字段", model=cap.name)
 
     mask = payload.get("mask")
     if mask is not None and not isinstance(mask, str):
@@ -128,7 +138,8 @@ def validate_request(
     if style is not None and not isinstance(style, str):
         raise ApiError(400, "invalid_style", "style 必须是字符串（风格 id 或中文标签）")
 
-    return (cap, image.strip(), (mask.strip() if isinstance(mask, str) else None),
+    return (cap, (image.strip() if isinstance(image, str) else ""),
+            (mask.strip() if isinstance(mask, str) else None),
             (style.strip() if isinstance(style, str) else None),
             (size.strip() if isinstance(size, str) else None),
             (prompt if isinstance(prompt, str) else None), response_format, dry, unsupported)
@@ -196,7 +207,12 @@ async def run(
     #    实测：该形状下上游按自然语言指令出图，没有指令只会回风格分析或编辑器链接；
     #  · workspace 形状：query 必须严格等于能力名（chat_token 的 md5 与它绑定）。
     query_text = cap.title
-    if cap.needs_style:
+    if not cap.needs_image:
+        # 文生图：**prompt 即 query**（抓包实测，chat_token 也按它算）
+        query_text = (prompt or "").strip()
+        if not query_text:
+            raise ApiError(400, "missing_prompt", f"「{cap.title}」需要 prompt")
+    elif cap.needs_style:
         # 风格类（实测形状：sa=workspace_piccreate_hfg + ext.style/text + TEXT=标签）
         raw_style = (style_value or prompt or "").strip()
         sid = label = ""
@@ -288,11 +304,14 @@ async def run(
         token, lid = client.creds.cached()
         token = token or "<chat-token:干跑未取>"
         lid = lid or "<lid:干跑未取>"
-        image_url, upload_info = _dry_image_plan(settings, image_value)
+        if cap.needs_image:
+            image_url, upload_info = _dry_image_plan(settings, image_value)
+        else:                                   # 文生图：无输入图，别声称要转存
+            image_url, upload_info = "", {"path": "none", "would_upload": False}
         effective["image_url"] = image_url
         effective["cred_source"] = client.creds.diagnostics()["source"]
         body: dict[str, Any] | None = None
-        if cap.tool_type is not None:
+        if cap.tool_type is not None or not cap.needs_image:   # 文生图没有 toolType 也要出预览
             body = build_body(cap, query_text=query_text, image_url=image_url, rank=rank,
                               token=token, lid=lid, expand=expand, ori_lid=settings.ORI_LID)
         preview: dict[str, Any] = {
@@ -326,7 +345,11 @@ async def run(
         }
 
     img_bytes: bytes | None = None
-    if go_legacy_direct:
+    if not cap.needs_image:
+        # 文生图没有输入图 ⇒ 不上传、不取字节；老接口也不适用（legacy_type=None）
+        image_url, upload_info = "", {"path": "none", "would_upload": False}
+        warnings.append("文生图：无输入图（query 即 prompt）")
+    elif go_legacy_direct:
         if cap.legacy_only:
             warnings.append(f"「{cap.title}」是 legacy-only 能力（主链形态未坐实），"
                             f"直接走老接口（type={cap.legacy_type}）")

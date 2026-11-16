@@ -359,3 +359,33 @@ type=3 变清晰    → ✓ 出图 370514B（task=dbtdjjdlnld66meqjfug）
 - 未测「换真出口立即恢复」（本机只有单个公网 IP，`BAIDU_PROXY_POOL` 无样本）；
 - 未测出口打标的**自然过期时间**（17 分钟仍在拒，未测到边界）；
 - 单机单 /24 单次实验，未做跨机器复现。
+
+---
+
+## 12. 文生图：同一条 conversation 接口的「无图」形状（2026-11-17 抓包 + 端到端复核）
+
+**来源**：bsk 驱动文心页面真实画了一次（4 张 864×1152），在页内装 `fetch`/`XHR` 钩子
+抓到请求体；再用本服务按同形状复跑，结果一致。
+
+**形状（与 workspace 图片编辑形状的三处差异）**：
+
+| | 图片编辑（原有） | 文生图（新增） |
+|---|---|---|
+| `query` | `[IMAGE, TEXT]` | **`[TEXT]`**（只有提示词） |
+| `mcpInfo` | `{type:"workspaceImage", ext:{type,image,...}}` | **不存在** |
+| `sa` / `enter_type` | `workspace_piccreate_<tt>` / `unknown` | **`bkb` / `sidebar_dialog`** |
+| `image` 参数 | 必填 | **必须不传**（传了即 400） |
+
+另有 `chatParams.chat_samples="WISE_NEW_CSAITAB"`、`isInnovate=2`、
+`capsuleSelectMode="fast"` 三个字段，抓包里都有，已一并复刻。
+
+**端到端结果**：默认配置（无需 `ALLOW_UNVERIFIED`）下
+`POST /v1/images/generations {"model":"wenxin:draw","prompt":"…"}`
+→ **17.3s / 12 帧 / 4 张 864×1152 `image/jpeg`**，`upstream.path="conversation"`。
+SSE 解析器**无需改动** —— 图片帧结构与编辑链路同源。
+
+**能力面影响**：注册 19→20，默认可用 15→16（`/v1/models`、`/readyz`、CI 冒烟三处同步）。
+
+**仍未取证**：图生图（带图的自然语言改写）与多图生图（多张参考图）需要再抓一次
+「上传图片 + 提交」的报文；当前**不登记、不假装支持**。`wenxin:redraw` / `wenxin:similar`
+仍覆盖"整图重绘 / 相似变体"这两类常见需求。
