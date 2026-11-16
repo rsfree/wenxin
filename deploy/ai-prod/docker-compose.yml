@@ -1,0 +1,36 @@
+# baidu-service · ai-prod 生产部署
+#
+# 与 textin/minter 同规：**端口只绑回环**（ai-prod ufw 放行 39000-40000 整段，
+# 绑 0.0.0.0 = 公网暴露一个"用别人 cookie 调百度"的出口）。
+#
+# 2026-11-16 变更（仓库 rsfree/baidu → rsfree/wenxin 改名之后）：
+#   · 镜像从 `ghcr.io/rsfree/baidu` 改为 **`ghcr.io/rsfree/wenxin`**；
+#   · 该包**已转 public** ⇒ 节点直接 pull，不再需要源码构建
+#     （旧注释说的"GHCR private + token 无 read:packages"已不成立）；
+#   · 钉语义化版本，**不用 latest**（latest 无法回答"线上跑的是哪次提交"）。
+name: baidu
+
+services:
+  baidu:
+    image: ghcr.io/rsfree/wenxin:${BAIDU_IMAGE_TAG:-0.0.18}
+    container_name: baidu
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      BAIDU_PORT: "8700"                 # 容器内固定 8700（Dockerfile EXPOSE）
+    ports:
+      - "127.0.0.1:39014:8700"           # 仅回环；公网入口 = nginx + baidu.1task.cn
+    volumes:
+      - baidu-media:/srv/var/media       # response_format=url 的落盘（不设 TTL，由部署方清理）
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8700/healthz', timeout=3).status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    # ⚠️ 不要提 workers：速率闸门 / 昆仑冷却窗 / 用量与日志缓冲都是**进程内状态**
+    #    （见 gunicorn_conf.py）。多 worker 会让面板的计数各记各的 —— 宁可单 worker。
+
+volumes:
+  baidu-media:
