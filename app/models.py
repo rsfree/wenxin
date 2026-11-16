@@ -114,6 +114,9 @@ class Capability:
     #: 该能力需要**风格选择**（`style` 字段）：`(id, label)` 表由服务端下发（见模块常量）。
     needs_style: bool = False
     style_table: tuple[tuple[str, str], ...] = ()
+    #: **文本产出型** chat 能力（如歌词）：成功判据是 `out.text` 非空而非出图；
+    #: 装配时把文本放进 `data[]`（`{"type": "text", ...}`），不下载图片。
+    text_output: bool = False
     evidence: str = ""              # 取证出处（实测记录）
     notes: str = ""
 
@@ -167,6 +170,22 @@ CAPABILITIES: dict[str, Capability] = {
                  "同一次请求在页面上产出 4 张 864×1152 图；"
                  "2026-11-17 端到端复测：19.4s / 13 帧 / 4 张 864×1152（image/jpeg）",
         notes="prompt 即查询文本；**不需要 image**",
+    ),
+    #: 歌词生成（2026-11-17 音乐对抗审查所得）：**文本产出型** chat 能力。
+    #: 裸 bkb 形状发「写一首…的歌」→ 上游路由为 AI 写歌词（markdown 文本流，
+    #: 两版歌词 ≈500 帧 / 9s）。**只出歌词文本、不出音频**——音频工作台
+    #: （interaction_type=13 / workspaceMusic / scene=create_limit 登录卡）在
+    #: 匿名态被后端硬拒（详见 docs/UPSTREAM.md §16）。
+    "wenxin:lyrics": Capability(
+        name="wenxin:lyrics", title="歌词生成",
+        tool_type=None, verified=True, needs_image=False, chat_shape=True,
+        text_output=True,
+        evidence="2026-11-17 对抗实测（§16）：匿名 cookie + sa=bkb + enter_type="
+                 "sidebar_dialog + TEXT『写一首关于深夜加班后走在回家路上的歌』→ "
+                 "493–667 帧 / 9.2s / markdown-yiyan 文本流两版完整歌词（含主歌/副歌/桥段）；"
+                 "换新匿名身份复测 667 帧一致。音频本身不可做（匿名态 scene=create_limit 硬拒）",
+        notes="prompt 即查询文本；产出在响应 data[0].text；**不出音频**"
+              "（音频生成是登录态专属）",
     ),
     "wenxin:matting": Capability(
         name="wenxin:matting", title="抠图", **_verified_main(

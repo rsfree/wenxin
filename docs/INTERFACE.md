@@ -56,7 +56,7 @@
 
 | 字段 | 必填 | 说明 |
 |---|---|---|
-| `model` | ✅ | `wenxin:<name>`（19 项，见 §7）；未注册名（含已撤的 `wenxin:reimagine`）⇒ 400 `unknown_model`；**未取证项**（如 `wenxin:ps`）⇒ 503 `capability_not_verified` |
+| `model` | ✅ | `wenxin:<name>`（21 项，见 §7）；未注册名（含已撤的 `wenxin:reimagine`）⇒ 400 `unknown_model`；**未取证项**（如 `wenxin:ps`）⇒ 503 `capability_not_verified` |
 | `image` | ✅ | **三种形态**：data URI / http(s) URL / 裸 base64。类型**按真实字节嗅探**（png/jpeg/webp/bmp；**GIF 不收**） |
 | `mask` | ❌ | **只有「消除 / 局部替换 / 背景替换」消费**（这两个能力**必填**，缺 ⇒ 400 `missing_mask`）：**黑底 + 白框**的图片，**白色标记「要处理的区域」**；形态同 `image`。其余能力给了 mask ⇒ 忽略 + `warnings[]` 明示 |
 | `style` | ❌ | **只有「换风格」消费**（**必填**，缺 ⇒ 400 `missing_style`；未知值 ⇒ 400 `unknown_style` 并回 17 项候选）：风格 **id**（如 `miyazaki`）或**中文标签**（如 `宫崎骏风`）。17 项见 `/capabilities` 的 `styles`；请求时 id 进 `ext.style`、标签进 `ext.text` 与 TEXT query |
@@ -174,11 +174,12 @@
 
 ---
 
-## 7. 能力清单（19 项，全部 `wenxin:*`）
+## 7. 能力清单（21 项，全部 `wenxin:*`）
 
 | 模型 | 上游能力 | 状态 |
 |---|---|---|
 | `wenxin:draw` | **文生图**：只给 `prompt`，不给 `image`；返回 4 张 864×1152 | ✅ 2026-11-17 |
+| `wenxin:lyrics` | **歌词生成**（文本产出型）：只给 `prompt`，返回 `data[0].text`（两版歌词 ≈700 字）；**不出音频**（匿名态音频工作台被 `scene=create_limit` 硬拒，见 UPSTREAM §16） | ✅ 2026-11-17 |
 | `wenxin:clarity` | 变清晰（4× 放大，上限 5472×3072） | ✅ |
 | `wenxin:expand` | 扩图（消费 `size`） | ✅ |
 | `wenxin:matting` / `wenxin:matting-pro` | 抠图 / 背景抠图（同能力域） | ✅ |

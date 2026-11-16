@@ -822,6 +822,16 @@ class BaiduClient:
                 )
             raise UpstreamUnavailableError(f"文心上游返回提示：{msg}",
                                            detail={"hint": htype})
+        if cap.text_output:
+            # 文本产出型（歌词）：成功判据是 **文本非空**，不是出图。
+            if not (out.text or "").strip():
+                raise UpstreamUnavailableError(
+                    f"文心上游未产出文本（已收到 {out.frames} 帧）"
+                    f"{'，登录卡：' + str(out.hint) if out.hint else ''}",
+                    detail={"frames": out.frames, "kunlun": out.kunlun,
+                            "hint": out.hint},
+                )
+            return out
         if not out.images:
             why = ("上游只返回了交互式编辑链接（picEditBaseUrl），没有结果图 —— "
                    "该 toolType 可能已改为「跳编辑器」形态" if out.editor_url else

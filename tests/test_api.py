@@ -66,7 +66,7 @@ def test_readyz_reports_cookie_and_counts(tmp_path):
     checks = body["checks"]
     assert checks["cookie_configured"] is True
     assert checks["credentials"]["source"] == "explicit"
-    assert checks["capabilities"] == {"total": 20, "available": 10}  # +wenxin:draw（文生图）
+    assert checks["capabilities"] == {"total": 21, "available": 11}  # +draw（文生图）+lyrics（歌词）
     assert checks["legacy"] == {"mode": "off", "base": None}
     assert checks["risk_window"]["cooling"] is False
     assert checks["proxy_pool"] == []
@@ -113,14 +113,15 @@ def test_models_lists_only_available(tmp_path):
     assert "wenxin:clarity" in ids and "wenxin:expand" in ids
     assert "wenxin:restyle" in ids and "wenxin:bgreplace" not in ids
     assert "wenxin:ps" not in ids, "9-24 复验不可用 ⇒ 不得出现在 /v1/models"
-    assert len(ids) == 10
+    assert "wenxin:lyrics" in ids and "wenxin:draw" in ids
+    assert len(ids) == 11
 
 
 def test_models_includes_unverified_when_gate_open(tmp_path):
     app, _ = _app(tmp_path, ALLOW_UNVERIFIED=True)
     with TestClient(app) as c:
         ids = [m["id"] for m in c.get("/v1/models").json()["data"]]
-    assert "wenxin:dewatermark" in ids and len(ids) == 18
+    assert "wenxin:dewatermark" in ids and len(ids) == 19
 
 
 def test_capabilities_explains_absences(tmp_path):
@@ -373,7 +374,7 @@ def test_legacy_unlocks_dewatermark_in_models(tmp_path):
     with TestClient(app) as c:
         ids = [m["id"] for m in c.get("/v1/models").json()["data"]]
         caps = c.get("/capabilities").json()
-    assert "wenxin:dewatermark" in ids and len(ids) == 16   # 20 - 4 无老接口映射
+    assert "wenxin:dewatermark" in ids and len(ids) == 17   # 21 - 4 无老接口映射
     dewater = [m for m in caps["models"] if m["id"] == "wenxin:dewatermark"][0]
     assert dewater["legacy_type"] == "1"
     assert caps["legacy"]["mode"] == "fallback"

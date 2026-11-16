@@ -293,7 +293,15 @@ def apply_frame(out: SseOutcome, raw: str, *, strip_watermark: bool = False) -> 
     g = (c.get("generator") or {}) if isinstance(c, dict) else {}
     comp = g.get("component")
     if comp == "markdown-yiyan":
-        out.text = (g.get("data") or {}).get("value")
+        gd = g.get("data") or {}
+        val = gd.get("value")
+        if isinstance(val, str):
+            if gd.get("typing"):
+                # 打字机增量流（歌词等文本产出：每帧只有一两个字）⇒ **拼接**；
+                # 否则保持覆盖语义（图片流的「已完成 xxx」单帧完整文案）。
+                out.text = (out.text or "") + val
+            else:
+                out.text = val
     elif comp == "image-generate":
         data = g.get("data") or {}
         out.ratio = data.get("ratio")

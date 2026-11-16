@@ -286,3 +286,50 @@ def test_draw_requires_prompt_and_rejects_image():
         validate_request({"model": "wenxin:draw", "prompt": "x",
                           "image": "data:image/png;base64,AA"})
     assert e2.value.code == "unexpected_image"
+
+# ---------------------------------------------------------------- 歌词（文本产出型）
+def test_lyrics_build_body_same_shape_as_draw():
+    """歌词（2026-11-17 §16 对抗实测）：与文生图同型 chat 形状，TEXT-only。"""
+    cap = lookup("wenxin:lyrics")
+    assert cap.text_output and cap.chat_shape and not cap.needs_image
+    b = build_body(cap, query_text="写一首关于深夜加班后回家的歌", image_url="", rank=1,
+                   token="t", lid="l", ori_lid="lid-x")
+    msg = b["message"]
+    si = msg["searchInfo"]
+    assert si["sa"] == "bkb" and si["enter_type"] == "sidebar_dialog"
+    assert "mcpInfo" not in si
+    assert [q["type"] for q in msg["query"]] == ["TEXT"]
+    assert msg["query"][0]["data"]["text"]["query"] == "写一首关于深夜加班后回家的歌"
+
+
+def test_lyrics_requires_prompt():
+    cap, image, *_ = validate_request({"model": "wenxin:lyrics", "prompt": "深夜加班回家"})
+    assert cap.name == "wenxin:lyrics" and image == ""
+    with pytest.raises(ApiError) as e1:
+        validate_request({"model": "wenxin:lyrics"})
+    assert e1.value.code == "missing_prompt"
+    with pytest.raises(ApiError) as e2:
+        validate_request({"model": "wenxin:lyrics", "prompt": "x",
+                          "image": "data:image/png;base64,AA"})
+    assert e2.value.code == "unexpected_image"
+
+def test_markdown_yiyan_typing_stream_concatenates():
+    """打字机增量流（歌词实测：每帧 data.value 只有一两个字、全部带 typing）必须**拼接**；
+    无 typing 的单帧完整文案（图片流的「已完成 xxx」）保持**覆盖**语义。
+    两种形态不会出现在同一个流里（2026-11-17 §16 对抗实测：
+    覆盖语义曾把 493 帧歌词拼成 "\n\n"）。"""
+
+    def typing_frame(value: str) -> str:
+        gen = {"text": "", "type": "entry", "component": "markdown-yiyan",
+               "data": {"value": value, "theme": {},
+                        "typing": {"cursor": True, "mode": "all"}}}
+        return "data:" + json.dumps({"status": 0, "qid": "q",
+                                     "data": {"message": {"content": {"generator": gen}}}},
+                                    ensure_ascii=False)
+
+    lines = []
+    for v in ["写", "一首", "歌", "\n", "主歌", "……", "\n\n"]:
+        lines += ["event:message", typing_frame(v)]
+    out = parse_sse(lines)
+    assert out.text == "写一首歌\n主歌……\n\n"
+    assert out.frames == 7

@@ -97,22 +97,25 @@ def validate_request(
             "data URI（`data:image/png;base64,...`）、http(s) URL、裸 base64",
         )
     if cap.chat_shape:
-        # chat 形状必须有 prompt（文生图不需要 image）
+        # chat 形状必须有 prompt（文生图/歌词不需要 image）
         _p = payload.get("prompt")
         if not isinstance(_p, str) or not _p.strip():
+            need = "描述的主题" if cap.text_output else "要生成/改写的画面"
             raise ApiError(400, "missing_prompt",
-                           f"「{cap.title}」需要 prompt 描述要生成/改写的画面",
+                           f"「{cap.title}」需要 prompt {need}",
                            model=cap.name)
     if not cap.needs_image:
-        # 文生图：prompt 就是查询文本，**没有 image**。空 prompt 才是缺参。
+        # 文生图/歌词：prompt 就是查询文本，**没有 image**。空 prompt 才是缺参。
         _p = payload.get("prompt")
         if not isinstance(_p, str) or not _p.strip():
+            kind = "歌词主题" if cap.text_output else "要画的画面"
             raise ApiError(400, "missing_prompt",
-                           f"「{cap.title}」用 prompt 描述要画的画面（不需要 image）",
+                           f"「{cap.title}」用 prompt 描述{kind}（不需要 image）",
                            model=cap.name)
         if isinstance(image, str) and image.strip():
+            kind = "歌词生成" if cap.text_output else "文生图"
             raise ApiError(400, "unexpected_image",
-                           f"「{cap.title}」是文生图，不接受 image 字段", model=cap.name)
+                           f"「{cap.title}」是{kind}，不接受 image 字段", model=cap.name)
 
     mask = payload.get("mask")
     if mask is not None and not isinstance(mask, str):
@@ -477,7 +480,11 @@ async def run(
             warnings.append("chat_token 校验失败（多为过期），已现取新 token 重试一次")
         if out.cred_source:
             effective["cred_source"] = out.cred_source
-        items, strip_notes = await _collect(settings, client, out, response_format)
+        if cap.text_output:
+            # 文本产出型（歌词）：data[] 装文本条目，不下载图片
+            items, strip_notes = [{"type": "text", "text": out.text}], False
+        else:
+            items, strip_notes = await _collect(settings, client, out, response_format)
         upstream_block = {
             "path": "conversation",
             "tool_type": cap.tool_type,
@@ -497,7 +504,7 @@ async def run(
         "model": cap.name,
         "dry_run": False,
         "data": items,
-        "usage": {"generated_images": len(items)},
+        "usage": {"generated_images": len(items) if not cap.text_output else 0},
         "requested": requested,
         "effective": effective,
         "warnings": warnings,

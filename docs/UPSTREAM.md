@@ -474,3 +474,85 @@ SSE 解析器**无需改动** —— 图片帧结构与编辑链路同源。
 
 **如果将来确实要接**：先登录抓一次完整 SSE，重点确认**结果帧给的是文件直链还是编辑器链接**
 ——若是后者（与 `ps`/`matting-pro`/`textreplace` 同型），则同样不可做。
+
+
+---
+
+## 16. 音乐绕登录：对抗审查全过程（2026-11-17）
+
+**问题**：§15 记录音乐在匿名态「9 帧零内容」。本节记录绕登录的全部对抗路径与
+**每一层的判定结果** —— 结论是：**音频不可绕，但歌词可以匿名拿到**，已登记为
+`wenxin:lyrics`（文本产出型）。
+
+### 16.1 前端层（UI 弹窗）—— 已绕过，只证明「墙在前端也有」
+
+文心工具页（wenxin.baidu.com）音乐面板：填 prompt → 回车 ⇒ **前端弹登录框、
+零请求发出**（与 PPT 同型）。bsk 独立 scope 实测：
+
+- 输入框 `#ci-editor` 是 contenteditable 三段模板，bsk fill 报 not fillable；
+- 回车提交走 `launchSearch`：`interactionType=E` 时前端有硬检查
+  `(E===4||E===9||E===13) && !uc()` ⇒ 弹 `qc()` 登录框并 **return，不发请求**
+  （chat-main-pc bundle @84577 反编译所得；4=office_create 7? 实为编号表
+  `photo_editing:8, ai_ppt:9, ai_music_create:13, ai_numerology:16…`）。
+
+**结论**：前端墙可被手工构造 payload 绕过 —— 但后端还有第二道（见 16.2）。
+
+### 16.2 后端层（conversation 接口）—— workspace 音乐形状被硬拒
+
+直打 `POST chat.baidu.com/aichat/api/conversation` 的变体矩阵（匿名 cookie、
+间隔 5s、原始帧落盘 `/tmp/music_frames_*.jsonl`）：
+
+| 变体 | 形状 | 结果 |
+|---|---|---|
+| A | 裸 bkb + 「写一首…的歌」（TEXT-only） | **493–667 帧 / 9.2s / 两版完整歌词文本流** |
+| B | bkb + `searchInfo.interaction_type:13` | 8 帧，`chatSearchTips{type:login-guide}` 卡 |
+| C | `sa=workspace_musiccreate_13` + `mcpInfo{type:workspaceMusic,ext:{type:"13"}}` + `interaction_type:13` | 同 B，8 帧 login-guide |
+| D | 同 C 但 `mcpInfo.type=workspaceImage` | 6 帧「相关图编操作完成」+ 编辑器深链（后端把 13 当**图编** toolType 兜底） |
+| E | `sa=workspace_piccreate_13`（塞进图片命名空间） | 同 D |
+
+**login-guide 卡的关键字段**（后端下发，不是前端造的）：
+
+```json
+{"type": "login-guide", "scene": "create_limit", "todayRound": 15,
+ "leftTitle": "登录体验完整功能", "leftBtn": "登录"}
+```
+
+**换新匿名身份复测（C 变体）**：`todayRound` 从 15 → 2，**仍然 login-guide**。
+⇒ `scene=create_limit` 的语义是「**匿名身份禁止创作类交互**」，不是配额耗尽
+（新身份第一发就被拒）。conversation 接口对创作类 interaction_type 有**服务端
+硬判定**，与 cookie 新旧、todayRound 数值无关。**不可绕**。
+
+### 16.3 旁路收益：裸 bkb = AI 写歌词（匿名可用）
+
+A 变体揭示了一条**可用的匿名旁路**：裸 bkb 对话形状下，「写一首…的歌」被上游
+路由为 **AI 写歌词**（markdown-yiyan 文本流），产出的不是音频而是**歌词**：
+
+- 493–667 帧 / 9.2–10s；两版歌词（如「松弛治愈风」「城市晚风治愈感」，
+  含主歌/副歌/桥段/结尾）；换新匿名身份一致复现。
+- §15 的「9 帧零内容」与此不一致 —— 真实原因见 16.4 的解析 bug：
+  文本一直在流里，只是被 `apply_frame` 的覆盖语义吞掉了。
+
+**追问卡片**（`inputBoxGuide`）是「给这三首歌配一段简短的旋律描述」——
+仍是文本对话路径，没有音频出口。音频生成的真实接口在登录态之后（App 端独立
+服务），无登录态不可触达。
+
+### 16.4 落地：`wenxin:lyrics` + apply_frame 的增量流修复
+
+- `SseOutcome.text` 原语义是「**覆盖**」（图片流里 markdown-yiyan 只有一帧
+  「已完成 xxx」完整文案）。歌词流是**逐字增量**（每帧 `data.value` 一两个字），
+  覆盖语义把 493 帧拼成 `"\n\n"` —— 这正是 §15「零文」的真相。
+- 修复：`apply_frame` 按 `data.typing` 字段二分 —— 有 `typing` = 打字机增量流
+  ⇒ **拼接**；无 = 单帧完整文案 ⇒ 保持覆盖。两种形态不会混在同一个流里。
+- 新字段 `Capability.text_output`：成功判据是 `out.text` 非空（不是出图）；
+  装配时 `data[] = [{"type": "text", "text": ...}]`，不下图片。
+- 能力面 20→21 / 可用 16→17（tests/CI/docs 三处同步）。
+- 端到端（8701 本地实例）：HTTP 200 / 499 帧 / 9.9s / data[0].text 703 字符完整歌词。
+
+### 16.5 对能力面的最终结论
+
+- **音频生成（真音乐）**：不可做，维持 §15 判定 —— 且现在有了**后端硬证据**
+  （`scene=create_limit` 登录卡），不再只是推测。
+- **歌词生成**：可做且已做（`wenxin:lyrics`）—— 文心音乐工作台把「AI写歌词」
+  作为匿名对话的一部分开放，本服务借同一形状吸收。
+- 前端墙不是墙：任何「前端弹登录框」的功能都值得用直打后端的方式复核一次 ——
+  后端判定可能比前端宽松（歌词）也可能相同（音频），只有实测才能定论。
