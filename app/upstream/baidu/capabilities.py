@@ -116,6 +116,7 @@ def build_body(
     ori_lid: str = "",
     style_id: str = "",
     style_label: str = "",
+    extra_images: tuple[str, ...] = (),
 ) -> dict[str, Any]:
     """构造 `/aichat/api/conversation` 的请求体。
 
@@ -132,10 +133,13 @@ def build_body(
     `token` / `lid` 由**调用方**传入而不再从配置直接读 —— 这样本函数保持纯函数，
     干跑才能在不触网的前提下构造请求体。
     """
-    if not cap.needs_image:
-        # ---- 文生图形状（2026-11-17 抓包）----
-        # 与 workspace 形状的三处关键差异：① 没有 IMAGE 查询项；② 没有 mcpInfo；
-        # ③ sa=bkb + enter_type=sidebar_dialog。chat_token 仍按 (token, query, lid) 计算。
+    if cap.chat_shape:
+        # ---- chat 形状（2026-11-17 抓包）----
+        # 与 workspace 形状的三处关键差异：① 没有 mcpInfo；② sa=bkb +
+        # enter_type=sidebar_dialog；③ IMAGE 查询项**可有可无**：
+        #   · 文生图 = 无 IMAGE（needs_image=False）
+        #   · 图生图 = 1 张 IMAGE + TEXT   · 多图生图 = N 张 IMAGE + TEXT
+        # chat_token 仍按 (token, query, lid) 计算。
         sa_text = cap.workspace_sa or "bkb"
         body = {
             "message": {
@@ -159,8 +163,11 @@ def build_body(
                     "deepDecisionInfo": {"isDeepDecision": 0},
                 },
                 "from": "", "source": "pc_csaitab",
-                "query": [{"type": "TEXT", "data": {"text": {
-                    "query": query_text, "extData": "{}", "text_type": ""}}}],
+                "query": ([
+                    {"type": "IMAGE", "data": {"image": {"image_id": "", "image_url": u}}}
+                    for u in ((image_url,) + tuple(extra_images) if cap.needs_image else ())
+                ] + [{"type": "TEXT", "data": {"text": {
+                    "query": query_text, "extData": "{}", "text_type": ""}}}]),
                 "agent_id": "",
             },
             "sa": sa_text,

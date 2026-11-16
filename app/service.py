@@ -96,6 +96,13 @@ def validate_request(
             "缺少输入图片（image 字段）。接受三种形态："
             "data URI（`data:image/png;base64,...`）、http(s) URL、裸 base64",
         )
+    if cap.chat_shape:
+        # chat 形状必须有 prompt（文生图不需要 image；图生图两者都要）
+        _p = payload.get("prompt")
+        if not isinstance(_p, str) or not _p.strip():
+            raise ApiError(400, "missing_prompt",
+                           f"「{cap.title}」需要 prompt 描述要生成/改写的画面",
+                           model=cap.name)
     if not cap.needs_image:
         # 文生图：prompt 就是查询文本，**没有 image**。空 prompt 才是缺参。
         _p = payload.get("prompt")
@@ -207,8 +214,8 @@ async def run(
     #    实测：该形状下上游按自然语言指令出图，没有指令只会回风格分析或编辑器链接；
     #  · workspace 形状：query 必须严格等于能力名（chat_token 的 md5 与它绑定）。
     query_text = cap.title
-    if not cap.needs_image:
-        # 文生图：**prompt 即 query**（抓包实测，chat_token 也按它算）
+    if cap.chat_shape:
+        # chat 形状（文生图 / 图生图）：**prompt 即 query**（抓包实测，chat_token 也按它算）
         query_text = (prompt or "").strip()
         if not query_text:
             raise ApiError(400, "missing_prompt", f"「{cap.title}」需要 prompt")

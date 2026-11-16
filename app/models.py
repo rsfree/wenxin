@@ -98,6 +98,9 @@ class Capability:
     legacy_uses_prompt: bool = False
     #: 该能力需要遮罩（黑底白框；老接口 picInfo2）
     requires_mask: bool = False
+    #: 是否使用「chat 形状」（`sa=bkb` + `enter_type=sidebar_dialog` + 无 `mcpInfo`）。
+    #: `needs_image=False` 时 = 文生图；`needs_image=True` 时 = **通用图生图**（IMAGE+TEXT）。
+    chat_shape: bool = False
     #: 是否需要输入图。`False` = **文生图**：请求里没有 IMAGE，只有 TEXT。
     #: 2026-11-17 从站点抓包实测：文生图走同一条 `/aichat/api/conversation`，
     #: 但 `query` 只有 TEXT、无 `mcpInfo`、`sa=bkb` + `enter_type=sidebar_dialog`。
@@ -125,7 +128,7 @@ class Capability:
         例外：**文生图**没有 toolType（query 就是 prompt），但它走的是主链
         `/aichat/api/conversation`，不能因为 toolType 为空就被判成 legacy-only。
         """
-        return self.tool_type is None and self.needs_image
+        return self.tool_type is None and self.needs_image and not self.chat_shape
 
 
 def _verified_main(tt: str, legacy: str | None = None, **kw) -> dict:
@@ -158,7 +161,7 @@ CAPABILITIES: dict[str, Capability] = {
     #: 先按 verified=False 落地，端到端跑通后改 True（不先假装可用）。
     "wenxin:draw": Capability(
         name="wenxin:draw", title="文生图",
-        tool_type=None, verified=True, needs_image=False,
+        tool_type=None, verified=True, needs_image=False, chat_shape=True,
         evidence="2026-11-17 bsk 抓站点报文：POST /aichat/api/conversation，"
                  "query 仅 [{type:TEXT}]、无 mcpInfo、sa=bkb、enter_type=sidebar_dialog；"
                  "同一次请求在页面上产出 4 张 864×1152 图；"
