@@ -204,10 +204,17 @@ CAPABILITIES: dict[str, Capability] = {
         )),
     "wenxin:textreplace": Capability(
         name="wenxin:textreplace", title="文字替换",
-        **_verified_main(
-            "17", None,
-            evidence="§3 枚举实证（toolType 17 出图 ✅；前端 bundle 旧注册表缺此条，服务端下发）",
-        )),
+        tool_type="17", verified=False,
+        evidence=(
+            "§3 枚举期出图 ✅。**2026-11-16 复验：3 次调用（404² 白底 logo / 1616² 同图 / "
+            "1920×789 带文字截图）全部只回 `picEditBaseUrl`（items:null，6 帧，"
+            "文案「已经完成了 文字替换 操作」），无任何结果图** —— 与 "
+            "ps(27)/matting-pro(10)/removeperson(21) 同型：该 toolType 已转「跳交互式编辑器」。"
+            "本服务是同步出口、没有编辑器交互通道 ⇒ 当前形态下不可用"
+        ),
+        notes="主链只回编辑器链接；要放开请设 BAIDU_ALLOW_UNVERIFIED=1（自担）。"
+              "复验提示：拿到**真实照片**且上游恢复出图后再改回 verified=True —— "
+              "矢量白底 logo 属分布外样本，不能单独据此定性",),
     "wenxin:restore": Capability(
         name="wenxin:restore", title="图片修复",
         **_verified_main("20", None, evidence="§3 枚举实证（toolType 20 出图 ✅）")),

@@ -183,7 +183,7 @@
 | `wenxin:bgreplace` | 背景替换（**需 `mask` + `prompt`**） | ✅ **2026-09-24 攻克**：老接口 `type=12` + `picInfo2`(遮罩) + `text` ⇒ 真跑 4.1s / 3.8s（900×600）。**此前 7 次失败全因没带遮罩** —— 站点该工具面板正是「识别背景/涂抹要替换区域 + 输入替换的内容」。主链形态仍不可用（回「未识别到主体」），故与消除/局部替换同构走兜底（`BAIDU_LEGACY=fallback`） |
 | `wenxin:sketch` | 提线稿（最慢，20~25s） | ✅ |
 | `wenxin:restyle` | 换风格（**需 `style`**，17 项可选） | ✅ **2026-09-24 攻克**：站点真实报文 = `sa=workspace_piccreate_hfg` + `enter_type=pic_picfunc_14` + `ext{…, image_source:1, style:<id>, text:<标签>}` + `query=[IMAGE, TEXT(标签)]`；真跑 宫崎骏风 10.3s / 油画风 10.7s（均 900×600）。风格表由 `image.baidu.com/aigc/extinfo` 下发 |
-| `wenxin:textreplace` | 文字替换 | ✅ |
+| `wenxin:textreplace` | 文字替换 | ⛔ **2026-11-16 复验 3 次（2 类输入）只回编辑器链接**，同 ps/matting-pro 形态 ⇒ 默认不可用（`BAIDU_ALLOW_UNVERIFIED=1` 可放开） |
 | `wenxin:restore` / `wenxin:removeperson` / `wenxin:removetext` | 图片修复 / 去路人 / 去文字 | ✅ |
 | `wenxin:filter` / `wenxin:beauty` / `wenxin:ps` | 滤镜 / 美颜 / P图 | ✅ |
 | `wenxin:dewatermark` | 去水印 | ⛔ 主链未取证（复测为编辑器形态）；**开 `BAIDU_LEGACY` 后经老接口可用**（type=1） |

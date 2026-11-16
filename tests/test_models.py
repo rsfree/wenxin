@@ -25,7 +25,9 @@ _LEGACY_ONLY = {"wenxin:redraw", "wenxin:similar"}
 _GATED = {"wenxin:dewatermark", "wenxin:erase", "wenxin:replace",
           "wenxin:redraw", "wenxin:similar", "wenxin:bgreplace",
           # 2026-09-24 复验：主链只回编辑器链接（8 类输入 18 次全失败）⇒ 撤出可用列表
-          "wenxin:ps", "wenxin:removeperson", "wenxin:matting-pro"}
+          "wenxin:ps", "wenxin:removeperson", "wenxin:matting-pro",
+          # 2026-11-16 复验：3 次（2 类输入）全回 picEditBaseUrl ⇒ 同型，撤出可用列表
+          "wenxin:textreplace"}
 
 
 def test_registry_shape_and_tool_types():
@@ -80,7 +82,7 @@ def test_availability_gate_and_open():
     ok, reason = availability(cap, allow_unverified=False)
     assert not ok and "BAIDU_ALLOW_UNVERIFIED" in reason
     assert availability(cap, allow_unverified=True)[0]
-    assert len(available(allow_unverified=False)) == 10          # 19 - 9 门禁
+    assert len(available(allow_unverified=False)) == 9           # 19 - 10 门禁（textreplace 2026-11-16 降级）
     assert len(available(allow_unverified=True)) == 17           # 19 - 2 legacy-only
 
 
@@ -117,9 +119,9 @@ def test_absences_are_documented():
 def test_legacy_unlocks_exactly_the_mapped_capabilities():
     default = available(allow_unverified=False)
     with_legacy = available(allow_unverified=False, legacy=True)
-    assert len(default) == 10
+    assert len(default) == 9
     # 10 已取证 + 6 有老接口映射的未取证 = 16（另 3 项无映射，开兜底也不可用）
-    assert len(with_legacy) == 16
+    assert len(with_legacy) == 15      # 2026-11-16：textreplace 降级后 19 - 4 无映射门禁
     assert {"wenxin:dewatermark", "wenxin:erase", "wenxin:replace",
             "wenxin:redraw", "wenxin:similar", "wenxin:bgreplace"} <= set(with_legacy)
     assert "wenxin:restyle" in with_legacy               # 主链已攻克（与老接口兜底无关）
@@ -128,8 +130,9 @@ def test_legacy_unlocks_exactly_the_mapped_capabilities():
     _unmapped_gated = {n for n in _GATED if not lookup(n).legacy_type}
     assert _mapped_gated == {"wenxin:dewatermark", "wenxin:erase", "wenxin:replace",
                              "wenxin:redraw", "wenxin:similar", "wenxin:bgreplace"}
-    assert _unmapped_gated == {"wenxin:ps", "wenxin:removeperson", "wenxin:matting-pro"}, \
-        "无映射门禁项必须显式在册（2026-09-24 复验：主链只回编辑器链接）"
+    assert _unmapped_gated == {"wenxin:ps", "wenxin:removeperson", "wenxin:matting-pro",
+                               "wenxin:textreplace"}, \
+        "无映射门禁项必须显式在册（2026-09-24 / 2026-11-16 复验：主链只回编辑器链接）"
     assert not (_unmapped_gated & set(with_legacy)), "无映射项**不得**因开兜底变可用"
 
 

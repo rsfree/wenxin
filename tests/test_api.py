@@ -66,7 +66,7 @@ def test_readyz_reports_cookie_and_counts(tmp_path):
     checks = body["checks"]
     assert checks["cookie_configured"] is True
     assert checks["credentials"]["source"] == "explicit"
-    assert checks["capabilities"] == {"total": 19, "available": 10}
+    assert checks["capabilities"] == {"total": 19, "available": 9}   # textreplace 2026-11-16 降级
     assert checks["legacy"] == {"mode": "off", "base": None}
     assert checks["risk_window"]["cooling"] is False
     assert checks["proxy_pool"] == []
@@ -113,7 +113,7 @@ def test_models_lists_only_available(tmp_path):
     assert "wenxin:clarity" in ids and "wenxin:expand" in ids
     assert "wenxin:restyle" in ids and "wenxin:bgreplace" not in ids
     assert "wenxin:ps" not in ids, "9-24 复验不可用 ⇒ 不得出现在 /v1/models"
-    assert len(ids) == 10
+    assert len(ids) == 9
 
 
 def test_models_includes_unverified_when_gate_open(tmp_path):
@@ -373,13 +373,14 @@ def test_legacy_unlocks_dewatermark_in_models(tmp_path):
     with TestClient(app) as c:
         ids = [m["id"] for m in c.get("/v1/models").json()["data"]]
         caps = c.get("/capabilities").json()
-    assert "wenxin:dewatermark" in ids and len(ids) == 16
+    assert "wenxin:dewatermark" in ids and len(ids) == 15
     dewater = [m for m in caps["models"] if m["id"] == "wenxin:dewatermark"][0]
     assert dewater["legacy_type"] == "1"
     assert caps["legacy"]["mode"] == "fallback"
     # 有老接口映射的都被解锁；**无映射的 3 项仍在 not_available**（不制造假能力）
     assert {m["id"] for m in caps["not_available"]} == {
-        "wenxin:ps", "wenxin:removeperson", "wenxin:matting-pro"}
+        "wenxin:ps", "wenxin:removeperson", "wenxin:matting-pro",
+        "wenxin:textreplace"}          # 2026-11-16 降级：无老接口映射 ⇒ 仍被挡
     # 换风格已攻克（主链专属 sa + style），仍在可用列表里
     assert "wenxin:restyle" in ids
 

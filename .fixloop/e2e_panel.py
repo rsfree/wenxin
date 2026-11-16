@@ -136,9 +136,13 @@ def run_flow(real: bool, mutation: bool) -> list[str]:
     require(vom, "版本", "外壳")
     done.append("外壳加载")
 
-    # ---- R2 总览 ----
+    # ---- R2 总览（能力数与 /readyz 对账，不硬编码——降级/放开都不该改判据）----
     require(vom, "OK", "总览")
-    require(vom, "16 / 19", "总览")
+    import urllib.request
+    with urllib.request.urlopen(f"{BASE}/readyz", timeout=10) as resp:
+        caps = json.load(resp)["checks"]["capabilities"]
+    expect = f"{caps['available']} / {caps['total']}"
+    require(vom, expect, "总览")
     if "not-yet-fetched" in vom:
         raise StepError("总览：凭据来源仍是原始枚举 not-yet-fetched（未做可读化）")
     if not any(x in vom for x in ("尚未现取", "已从首页现取", "显式配置")):
