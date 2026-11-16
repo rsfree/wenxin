@@ -612,3 +612,77 @@ it=8 匿名可过、it=13 一律拒 ⇒ 这是**类型级白名单**，不是全
 
 **要真音乐，唯一的路是登录态 cookie**（BAIDUSS 等），代价：账号绑定、cookie 会过期、
 风控落在账号上 —— 这是本服务「匿名吸收」原则的边界。
+
+
+---
+
+## 17. 语音：TTS / ASR 两条独立链路（2026-11-17，均匿名可用）
+
+两者都**不走** `/aichat/api/conversation`——是**独立传输层**，与图片族互不影响。
+
+### 17.1 TTS（`/aichat/api/tts`）
+
+**发现路径**：从 `common.js` 的答案朗读组件反编译 → 抓站点「语音播报」按钮的真实请求。
+
+**请求形状**（实测抓包 + 变体验证）：
+
+```
+POST https://chat.baidu.com/aichat/api/tts?from=csaitab&appId=&agentSearchId=
+     &rate=<比特率>&mid=[&per=<发音人>]&tk=<tk>&
+Content-Type: application/json
+body: {"text": "<要合成的文本>"}
+```
+
+- **`tk` 与 chat_token 完全同构**：`base64("token|MD5(text)|ts|lid")-lid-3`。
+  唯一差别是 md5 的输入是**待合成文本**（不是 query）。抓包 base64 解码逐字段确认。
+- **`text` 不进 URL**（前端 `forEach` 显式跳过 `text` 键），走 POST body —— 这点不看
+  前端代码只看抓包会漏（URL 里没有 text 却能合成）。
+- `from` 必须是 `csaitab`（写 `pc` 等回 `{"status":-1,"message":"invalid_from"}`）。
+- `rate` 是**比特率**不是语速：32/64/128 kbps，实测**时长不变**、字节数严格成比例。
+- `per` 是发音人，**可透传**：不传由服务端给 4100；0/1/3/4 实测生效（音频 URL 的
+  per 跟随、音色不同）。
+
+**响应**：`{"status":0,"data":{"contentList":["https://tts.baidu.com/text2audio?...&auth=..."]}}`
+—— 按标点分句，每段带 `auth` 签名的 mp3（16kHz mono，`per`/`rate` 在 URL 里）。
+
+**落地**：`wenxin:tts` → `POST /v1/audio/speech`；服务端逐段代取后**字节合并**
+（MPEG ADTS 自同步帧流，直接 concat 可播，不需要 ffmpeg）。
+
+### 17.2 ASR（`wss://vse.baidu.com/ws_api`）
+
+**发现路径**：`common.js` 的 `VoiceInput` 组件（`getUserMedia` + `AudioContext`）→
+反编译出 WS 协议，**不需要登录**即可连。
+
+**协议**（逐字对齐）：
+
+```
+1) 连接：wss://vse.baidu.com/ws_api?sn=<uuid>
+2) START（文本帧）：
+   {"type":"START","data":{"user":"baidu_pc","dev_key":"com.baidu.searchbox.fangyan",
+     "dev_pid":8068,"cuid":"...","sample":16000,"format":"pcm","type":1,
+     "role_num":1,"vad_type":1,"vad_mode":0,"channels":1,
+     "need_session_finish":true,"punc":true,"start_timestamp":<ms>}}
+3) 音频：裸 int16 PCM 二进制帧（16k mono s16le），**全速推流也可**（不必实时）
+4) 结束：{"type":"FINISH"}
+5) 响应：{"type","err_no","err_msg","result"}；
+   MID_TEXT = 中间结果（**累积全文**，不是增量）；FIN_TEXT = 最终结果（带标点）；
+   HEARTBEAT 忽略；err_no=-3005 = 会话结束（忽略）
+```
+
+**实测**：edge-tts 合成的 3.4s 语音，全速推流（无 sleep），`FIN_TEXT` 逐字正确
+（"今天天气不错，晚上一起吃饭吧。"）。**无 cookie、无风控触发**。
+
+**落地**：`wenxin:asr` → `POST /v1/audio/transcriptions`（OpenAI multipart 同形）。
+
+**音频格式边界**：容器是 `python:3.13-slim`、**没有 ffmpeg**，依赖面刻意最小 ⇒
+只接 **wav**（标准库 `wave` 解析 + 线性插值重采样到 16k mono，8/16/24/32bit 全支持）
+与**裸 16k pcm**；mp3/m4a 明确 400（提示调用方先转），不引解码器。
+
+### 17.3 与图片族的对照
+
+| 维度 | 图片（conversation） | TTS | ASR |
+|---|---|---|---|
+| 传输 | POST SSE | POST JSON | WebSocket |
+| 匿名 | ✅（创作类 it 白名单例外） | ✅ | ✅ 连 cookie 都不要 |
+| 风控 | 每身份累计预算 ≈45–55 发 | 未见（QPS 未知） | 未见 |
+| 产出 | 图 URL（需代取） | 分句 mp3 URL（需代取） | 文本 |

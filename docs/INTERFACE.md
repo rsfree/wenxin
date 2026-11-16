@@ -11,7 +11,9 @@
 
 | 方法 | 路径 | 鉴权 | 说明 |
 |---|---|---|---|
-| `POST` | `/v1/images/generations` | ✅ Key | **执行端点**（图进图出；唯一语义入口） |
+| `POST` | `/v1/images/generations` | ✅ Key | **图片执行端点**（图进图出；图片类唯一语义入口） |
+| `POST` | `/v1/audio/speech` | ✅ Key | **TTS**（OpenAI 同形）：`{"model":"wenxin:tts","input":"…"}` → `audio/mpeg` 字节 |
+| `POST` | `/v1/audio/transcriptions` | ✅ Key | **ASR**（OpenAI 同形，multipart）：`file`（wav / 16k pcm）+ `model=wenxin:asr` → `{"text":"…"}` |
 | `GET` | `/v1/models` | 🔓 免 | 能力清单（OpenAI 四键形态；**只列本部署可用**） |
 | `GET` | `/llms.txt` | 🔓 免 | **给 LLM/Agent 的服务说明书**（llmstxt.org 约定，`text/markdown`）——内容**从注册表派生**（能力表/必填输入/通路/本部署可用性/风格表/错误码），不随能力变更漂移 |
 | `GET` | `/capabilities` | ✅ Key | 全量能力 + 未取证项的**原因与开启方式** + 老接口映射 + 刻意缺席 |
@@ -56,7 +58,7 @@
 
 | 字段 | 必填 | 说明 |
 |---|---|---|
-| `model` | ✅ | `wenxin:<name>`（21 项，见 §7）；未注册名（含已撤的 `wenxin:reimagine`）⇒ 400 `unknown_model`；**未取证项**（如 `wenxin:ps`）⇒ 503 `capability_not_verified` |
+| `model` | ✅ | `wenxin:<name>`（23 项，见 §7）；未注册名（含已撤的 `wenxin:reimagine`）⇒ 400 `unknown_model`；**未取证项**（如 `wenxin:ps`）⇒ 503 `capability_not_verified` |
 | `image` | ✅ | **三种形态**：data URI / http(s) URL / 裸 base64。类型**按真实字节嗅探**（png/jpeg/webp/bmp；**GIF 不收**） |
 | `mask` | ❌ | **只有「消除 / 局部替换 / 背景替换」消费**（这两个能力**必填**，缺 ⇒ 400 `missing_mask`）：**黑底 + 白框**的图片，**白色标记「要处理的区域」**；形态同 `image`。其余能力给了 mask ⇒ 忽略 + `warnings[]` 明示 |
 | `style` | ❌ | **只有「换风格」消费**（**必填**，缺 ⇒ 400 `missing_style`；未知值 ⇒ 400 `unknown_style` 并回 17 项候选）：风格 **id**（如 `miyazaki`）或**中文标签**（如 `宫崎骏风`）。17 项见 `/capabilities` 的 `styles`；请求时 id 进 `ext.style`、标签进 `ext.text` 与 TEXT query |
@@ -174,12 +176,14 @@
 
 ---
 
-## 7. 能力清单（21 项，全部 `wenxin:*`）
+## 7. 能力清单（23 项，全部 `wenxin:*`）
 
 | 模型 | 上游能力 | 状态 |
 |---|---|---|
 | `wenxin:draw` | **文生图**：只给 `prompt`，不给 `image`；返回 4 张 864×1152 | ✅ 2026-11-17 |
 | `wenxin:lyrics` | **歌词生成**（文本产出型）：只给 `prompt`，返回 `data[0].text`（两版歌词 ≈700 字）；**不出音频**（匿名态音频工作台被 `scene=create_limit` 硬拒，见 UPSTREAM §16） | ✅ 2026-11-17 |
+| `wenxin:tts` | **语音合成**：`/v1/audio/speech`，`input` 即文本；`voice`→发音人 per（默认 4100）、`rate` 是**比特率** 32/64/128（不是语速）；返回合并后的 mp3 | ✅ 2026-11-17 |
+| `wenxin:asr` | **语音识别**：`/v1/audio/transcriptions`，接受 wav（自动转 16k mono）或 16k mono s16le 裸 pcm；**容器无 ffmpeg**，mp3/m4a 需调用方先转 | ✅ 2026-11-17 |
 | `wenxin:clarity` | 变清晰（4× 放大，上限 5472×3072） | ✅ |
 | `wenxin:expand` | 扩图（消费 `size`） | ✅ |
 | `wenxin:matting` / `wenxin:matting-pro` | 抠图 / 背景抠图（同能力域） | ✅ |

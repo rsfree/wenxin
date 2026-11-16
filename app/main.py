@@ -23,7 +23,7 @@ from typing import Annotated, Any
 
 import uvicorn
 from fastapi import Depends, FastAPI, Header, Request
-from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
 
@@ -46,6 +46,7 @@ from .models import (
 )
 from .observability import setup as setup_observability
 from .observability import spans
+from .upstream.baidu import audio
 from .service import run, validate_request
 from . import usage
 from .upstream.baidu import BaiduClient
@@ -344,6 +345,129 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                          ms=(time.perf_counter() - started) * 1000,
                          dry=bool(payload.get("dry_run")), path=upstream_path,
                          error=error_code)
+
+    # ---------- 语音（OpenAI 兼容：/v1/audio/*） ----------
+    # 两条独立传输层（不走 conversation）：TTS = /aichat/api/tts，ASR = vse.baidu.com WS。
+    # 证据与形状详见 docs/UPSTREAM.md §17。
+
+    @app.post("/v1/audio/speech")
+    async def audio_speech(request: Request,
+                           _: str = Depends(require_api_key)) -> Response:
+        """TTS（OpenAI `POST /v1/audio/speech` 形态）。
+
+        入参：`{"model":"wenxin:tts","input":"...","voice":"4100"?,"rate":"64"?}`；
+        返回 `audio/mpeg` 字节流（多分句已在服务端合并）。
+        """
+        try:
+            payload = await request.json()
+        except ValueError as exc:
+            raise ApiError(400, "invalid_json", "请求体不是合法 JSON") from exc
+        if not isinstance(payload, dict):
+            raise ApiError(400, "invalid_body", "请求体必须是 JSON 对象")
+
+        started = time.perf_counter()
+        error_code = ""
+        model_name = str(payload.get("model") or "")
+        try:
+            cap = CAPABILITIES.get(model_name)
+            if cap is None or cap.media_kind != "tts":
+                raise ApiError(400, "unknown_model",
+                               f"TTS 端点只接受 model=wenxin:tts（收到 {model_name!r}）")
+            unknown = set(payload) - {"model", "input", "voice", "rate", "response_format"}
+            if unknown:
+                raise ApiError(400, "unknown_field",
+                               f"不认识的字段：{'、'.join(sorted(unknown))}。"
+                               f"TTS 接受：model、input、voice、rate、response_format")
+            text = payload.get("input")
+            if not isinstance(text, str) or not text.strip():
+                raise ApiError(400, "missing_input", "缺少 input（要合成的文本）")
+            voice = payload.get("voice")
+            if voice is not None:
+                voice = str(voice)
+                if not voice.isdigit():
+                    raise ApiError(400, "invalid_voice",
+                                   "voice 必须是发音人编号（如 4100 / 0 / 1 / 3 / 4）")
+            rate = str(payload.get("rate") or "64")
+            if rate not in ("32", "64", "128"):
+                raise ApiError(400, "invalid_rate",
+                               "rate 是**比特率**（32/64/128 kbps，实测不是语速）")
+            raw, info = await _client(request).tts(text.strip(), voice=voice, rate=rate)
+            logger.info(f"tts: {info['segments']} segs / {info['bytes']}B / rate={rate}")
+            return Response(content=raw, media_type="audio/mpeg",
+                            headers={"X-Segments": str(info["segments"])})
+        except UpstreamError as exc:
+            error_code = exc.kind
+            raise
+        except ApiError as exc:
+            error_code = exc.code
+            raise
+        finally:
+            usage.record(model=model_name or "unknown", title="语音合成",
+                         ok=not error_code,
+                         ms=(time.perf_counter() - started) * 1000,
+                         dry=False, path="tts", error=error_code)
+
+    @app.post("/v1/audio/transcriptions")
+    async def audio_transcriptions(request: Request,
+                                   _: str = Depends(require_api_key)) -> JSONResponse:
+        """ASR（OpenAI `POST /v1/audio/transcriptions` 形态，multipart）。
+
+        入参：`file`（wav 或 16k mono s16le 裸 pcm）+ `model=wenxin:asr`；
+        返回 `{"text": "..."}`。容器无 ffmpeg ⇒ 压缩格式（mp3/m4a）明确拒绝，
+        由调用方先转 wav（这一条写进 docs/INTERFACE.md）。
+        """
+        started = time.perf_counter()
+        error_code = ""
+        model_name = ""
+        try:
+            try:
+                form = await request.form()
+            except Exception as exc:  # noqa: BLE001 - 非 multipart 会在这里炸
+                raise ApiError(400, "invalid_form",
+                               "请求必须是 multipart/form-data（字段 file + model）") from exc
+            model_name = str(form.get("model") or "")
+            cap = CAPABILITIES.get(model_name)
+            if cap is None or cap.media_kind != "asr":
+                raise ApiError(400, "unknown_model",
+                               f"ASR 端点只接受 model=wenxin:asr（收到 {model_name!r}）")
+            upload = form.get("file")
+            if upload is None or isinstance(upload, str):
+                raise ApiError(400, "missing_file", "缺少 file（音频文件）")
+            data = await upload.read()
+            if not data:
+                raise ApiError(400, "empty_file", "file 是空文件")
+            if len(data) > 25 * 1024 * 1024:
+                raise ApiError(400, "file_too_large", "file 超过 25MB 上限")
+            name = (upload.filename or "").lower()
+            ctype = (upload.content_type or "").lower()
+            if name.endswith(".wav") or ctype in ("audio/wav", "audio/x-wav", "audio/wave"):
+                try:
+                    pcm = audio.pcm16k_from_wav(data)
+                except Exception as exc:  # noqa: BLE001 - wave 的异常类型不统一
+                    raise ApiError(400, "invalid_wav",
+                                   f"WAV 解析失败：{exc}（需未压缩 PCM 编码的 wav）") from exc
+            elif name.endswith(".pcm") or ctype in ("application/octet-stream", ""):
+                pcm = data          # 裸 pcm：约定 16k mono s16le
+            else:
+                raise ApiError(
+                    400, "unsupported_audio",
+                    f"不支持的音频格式 {name or ctype!r}：只接受 wav（自动转 16k mono）"
+                    f"或 16k mono s16le 裸 pcm。容器无 ffmpeg，mp3/m4a 请先自行转换")
+            text, info = await _client(request).asr(pcm)
+            logger.info(f"asr: {info['seconds']}s audio → {len(text)} chars")
+            return JSONResponse({"text": text, "bytes": info["pcm_bytes"],
+                                 "seconds": info["seconds"]})
+        except UpstreamError as exc:
+            error_code = exc.kind
+            raise
+        except ApiError as exc:
+            error_code = exc.code
+            raise
+        finally:
+            usage.record(model=model_name or "unknown", title="语音识别",
+                         ok=not error_code,
+                         ms=(time.perf_counter() - started) * 1000,
+                         dry=False, path="asr", error=error_code)
 
     # ---------- 管理面板（运维面） ----------
     # 依赖用参数注入（而不是 admin 里 import require_api_key），避免 main ↔ admin 循环导入。

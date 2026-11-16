@@ -47,6 +47,14 @@ _UPSTREAM_KIND_NOTES: dict[str, str] = {
 
 def _inputs_of(cap) -> str:
     """该能力的**必填输入**（从注册表派生，不手抄）。"""
+    if cap.media_kind == "tts":
+        return "`input`（要合成的文本）"
+    if cap.media_kind == "asr":
+        return "`file`（wav / 16k pcm）"
+    if cap.text_output:
+        return "`prompt`（主题描述）"
+    if cap.chat_shape and not cap.needs_image:
+        return "`prompt`"
     need = []
     if cap.requires_mask:
         need.append("`mask`")
@@ -60,6 +68,10 @@ def _inputs_of(cap) -> str:
 
 
 def _route_of(cap) -> str:
+    if cap.media_kind == "tts":
+        return "独立接口 `/aichat/api/tts`"
+    if cap.media_kind == "asr":
+        return "独立接口 `wss://vse.baidu.com/ws_api`"
     if cap.legacy_only:
         return f"老接口 type={cap.legacy_type}"
     if cap.legacy_type and not cap.verified:
@@ -86,10 +98,10 @@ def render(settings: Settings) -> str:
 
     out: list[str] = []
     add = out.append
-    add("# baidu-service · 文心助手图片编辑 API")
+    add("# baidu-service · 文心助手 API（图片 / 语音 / 文本）")
     add("")
-    add("> 把 `wenxin.baidu.com` / `chat.baidu.com`（文心助手「图片编辑工具」）包成"
-        " **OpenAI 风格**的同步图片接口：**一条 POST、进图出图**。")
+    add("> 把 `wenxin.baidu.com` / `chat.baidu.com`（文心助手）包成 **OpenAI 风格**的同步接口："
+        "图片**一条 POST、进图出图**，另附语音合成 / 识别 / 歌词三个独立端点。")
     add(f"> 对外模型名 `wenxin:*`；本服务注册 **{len(caps)} 项能力**，"
         f"本部署当前可调用 **{len(usable)} 项**（口径见「兜底与降级」）。")
     add("")
@@ -100,6 +112,17 @@ def render(settings: Settings) -> str:
     add("  -H \"Authorization: Bearer $BAIDU_API_KEY\" \\")
     add("  -H 'Content-Type: application/json' \\")
     add("  -d '{\"model\": \"wenxin:clarity\", \"image\": \"https://example.com/a.jpg\"}'")
+    add("")
+    add("# 语音合成（返回 audio/mpeg）")
+    add("curl -sS https://<host>/v1/audio/speech \\")
+    add("  -H \"Authorization: Bearer $BAIDU_API_KEY\" \\")
+    add("  -H 'Content-Type: application/json' \\")
+    add("  -d '{\"model\": \"wenxin:tts\", \"input\": \"你好，世界\"}'")
+    add("")
+    add("# 语音识别（multipart，wav 或 16k mono pcm）")
+    add("curl -sS https://<host>/v1/audio/transcriptions \\")
+    add("  -H \"Authorization: Bearer $BAIDU_API_KEY\" \\")
+    add("  -F 'model=wenxin:asr' -F 'file=@a.wav'")
     add("```")
     add("")
     add("- `image` 支持 **http(s) URL** 或 **data URI**（`data:image/png;base64,...`）；"
@@ -112,7 +135,8 @@ def render(settings: Settings) -> str:
     add("## 鉴权")
     add("")
     add("- 免鉴权：`GET /healthz`、`GET /readyz`、`GET /v1/models`、`GET /llms.txt`；")
-    add("- 其余端点（含 `POST /v1/images/generations`、`GET /capabilities`、`GET /stats`）"
+    add("- 其余端点（含 `POST /v1/images/generations`、`POST /v1/audio/*`、"
+        "`GET /capabilities`、`GET /stats`）"
         "需 `Authorization: Bearer <key>`；未配 key 的部署会拒绝挂载受保护面。")
     add("")
     add(f"## 能力清单（{len(caps)} 项，`model` 取值即 `wenxin:*`）")

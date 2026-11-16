@@ -15,3 +15,5 @@ loguru>=0.7
 # 这是上游抓取外链失败的两个已知诱因（体积、非标 Content-Type），
 # 见 docs/UPSTREAM.md §6；跳过的开关是 BAIDU_NORMALIZE=0。
 pillow>=10.0
+# 表单解析（/v1/audio/transcriptions 的 multipart 上传 —— OpenAI 兼容 ASR 入口）
+python-multipart>=0.0.9

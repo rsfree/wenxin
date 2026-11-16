@@ -48,6 +48,7 @@ from ...errors import (
 )
 from ...media import mime_ext, upload_ext
 from ...models import Capability
+from . import audio as audio_mod
 from .capabilities import (
     SseOutcome,
     apply_frame,
@@ -64,6 +65,9 @@ __all__ = ["BaiduClient", "Credentials"]
 #: 与实证探针逐字一致的浏览器 UA（改 UA 必须整仓一起改）。
 _UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
        "(KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36")
+
+#: 1 MiB（音频分段/WS 帧上限换算用）
+_MB = 1024 * 1024
 
 #: 代取/结果下载的独立超时（与上游处理超时无关）。
 _FETCH_TIMEOUT = 30.0
@@ -717,6 +721,102 @@ class BaiduClient:
                 detail={"task_id": task_id, "polls": self._s.LEGACY_POLL_TRIES,
                         "last": json.dumps(last, ensure_ascii=False)[:200]},
             )
+
+    # ------------------------------------------------------------------ 语音（TTS/ASR）
+
+    async def tts(self, text: str, *, voice: str | None = None,
+                  rate: str = audio_mod.TTS_RATE) -> tuple[bytes, dict[str, Any]]:
+        """语音合成：`/aichat/api/tts`（POST JSON，返回分句 mp3 并合并）。
+
+        实证（§17）：tk 与 chat_token 同构；`text` 走 body；`contentList` 的分句
+        mp3 URL 带 auth 签名，需**服务端代取**（不把带签名的上游 URL 暴露给调用方）。
+        """
+        token, lid = await self.creds.get()
+        path = audio_mod.tts_url(token, lid, text, voice=voice, rate=str(rate))
+        headers = self._browser_headers(content_type="application/json",
+                                        accept="application/json")
+        info: dict[str, Any] = {"path": "tts", "rate": str(rate), "voice": voice or "default"}
+        async with self._session() as client:
+            try:
+                r = await client.post(path, headers=headers,
+                                      content=json.dumps({"text": text},
+                                                         ensure_ascii=False).encode(),
+                                      timeout=30)
+            except httpx.TimeoutException as exc:
+                raise UpstreamTimeout("TTS 请求超时（30s）") from exc
+            except httpx.HTTPError as exc:
+                raise UpstreamUnavailableError(f"TTS 网络错误：{exc}") from exc
+            if r.status_code != 200:
+                raise UpstreamUnavailableError(
+                    f"TTS 上游 HTTP {r.status_code}",
+                    http_status=r.status_code,
+                    detail={"body_head": r.text[:200]})
+            try:
+                urls = audio_mod.parse_tts_response(r.json())
+            except ValueError as exc:
+                raise UpstreamParamError(f"TTS 响应异常：{exc}",
+                                        detail={"body_head": r.text[:200]}) from exc
+            if not urls:
+                raise UpstreamUnavailableError(
+                    "TTS 未给出音频分段（contentList 为空）",
+                    detail={"body_head": r.text[:200]})
+            info["segments"] = len(urls)
+            segs: list[bytes] = []
+            for u in urls:
+                raw, _ct = await self.fetch_url(u, 20 * _MB, timeout=30, retries=1)
+                segs.append(raw)
+        raw = audio_mod.merge_mp3(segs)
+        info["bytes"] = len(raw)
+        return raw, info
+
+    async def asr(self, pcm16k_mono: bytes, *, timeout_s: float = 90.0) -> tuple[str, dict[str, Any]]:
+        """语音识别：`wss://vse.baidu.com/ws_api` 流式推 PCM，等 `FIN_TEXT`。
+
+        实证（§17）：匿名可用、全速推流不丢字；`FIN_TEXT` 为最终结果（带标点）。
+        只吃 **16k mono s16le** —— 调用方负责把 wav 转好（`audio.pcm16k_from_wav`）。
+        """
+        import websockets  # noqa: PLC0415 - 仅此路径需要，避免全局引入
+
+        info: dict[str, Any] = {"path": "asr", "pcm_bytes": len(pcm16k_mono),
+                                "seconds": round(len(pcm16k_mono) / 32000, 2)}
+        finals: list[str] = []
+        mids: list[str] = []
+        async with websockets.connect(audio_mod.asr_url(), open_timeout=15,
+                                      close_timeout=5, max_size=2 * _MB) as ws:
+            await ws.send(json.dumps(audio_mod.asr_start_frame(), ensure_ascii=False))
+            chunk = 8192
+            for i in range(0, len(pcm16k_mono), chunk):
+                await ws.send(pcm16k_mono[i: i + chunk])
+            await ws.send(json.dumps(audio_mod.ASR_FINISH_FRAME))
+            deadline = time.monotonic() + timeout_s
+            while True:
+                remain = deadline - time.monotonic()
+                if remain <= 0:
+                    break
+                try:
+                    async with asyncio.timeout(remain):
+                        raw = await ws.recv()
+                except (TimeoutError, websockets.ConnectionClosed):
+                    break
+                if isinstance(raw, bytes):
+                    continue
+                try:
+                    frame = json.loads(raw)
+                except ValueError:
+                    continue
+                text = audio_mod.asr_result(frame)
+                if not text:
+                    continue
+                if frame.get("type") == "FIN_TEXT":
+                    finals.append(text)
+                    break
+                mids.append(text)
+        info["frames"] = len(mids) + len(finals)
+        final = finals[-1] if finals else (mids[-1] if mids else "")
+        if not final:
+            raise UpstreamUnavailableError("ASR 未返回识别文本（无 FIN_TEXT/MID_TEXT）",
+                                           detail=info)
+        return final, info
 
     # ------------------------------------------------------------------ 主链路
 

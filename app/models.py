@@ -117,6 +117,9 @@ class Capability:
     #: **文本产出型** chat 能力（如歌词）：成功判据是 `out.text` 非空而非出图；
     #: 装配时把文本放进 `data[]`（`{"type": "text", ...}`），不下载图片。
     text_output: bool = False
+    #: **媒体类能力**（`tts` / `asr`）：不走 conversation、不走老接口，走独立传输层。
+    #: 非 None ⇒ `legacy_only` 恒 False，且由 `/v1/audio/*` 端点处理。
+    media_kind: str | None = None    # "tts" | "asr"
     evidence: str = ""              # 取证出处（实测记录）
     notes: str = ""
 
@@ -129,9 +132,11 @@ class Capability:
         """主链形态未坐实 ⇒ 只能走老接口。
 
         例外：**文生图**没有 toolType（query 就是 prompt），但它走的是主链
-        `/aichat/api/conversation`，不能因为 toolType 为空就被判成 legacy-only。
+        `/aichat/api/conversation`，不能因为 toolType 为空就被判成 legacy-only；
+        **媒体类**（tts/asr）也不进 legacy 判定（走独立传输层）。
         """
-        return self.tool_type is None and self.needs_image and not self.chat_shape
+        return (self.tool_type is None and self.needs_image
+                and not self.chat_shape and self.media_kind is None)
 
 
 def _verified_main(tt: str, legacy: str | None = None, **kw) -> dict:
@@ -186,6 +191,29 @@ CAPABILITIES: dict[str, Capability] = {
                  "换新匿名身份复测 667 帧一致。音频本身不可做（匿名态 scene=create_limit 硬拒）",
         notes="prompt 即查询文本；产出在响应 data[0].text；**不出音频**"
               "（音频生成是登录态专属）",
+    ),
+    #: 语音合成（2026-11-17 实测）：独立接口，不走 conversation。
+    #: `POST /aichat/api/tts?from=csaitab&rate=<比特率>&tk=<build_chat_token(token,text,lid)>`
+    #: + body `{"text": ...}` → `contentList` 分句 mp3 URL（带 auth 签名，可直下）。
+    "wenxin:tts": Capability(
+        name="wenxin:tts", title="语音合成",
+        tool_type=None, verified=True, media_kind="tts",
+        evidence="2026-11-17 实测（§17）：抓自站点「语音播报」按钮，"
+                 "tk 算法与 chat_token 完全同构（base64(token|md5(text)|ts|lid)-lid-3）；"
+                 "POST body={text} → contentList 分句 mp3（per=4100）；"
+                 "rate 是**比特率**（32/64/128kbps，时长不变），不是语速",
+        notes="端点 /v1/audio/speech；voice → per（默认 4100）",
+    ),
+    #: 语音识别（2026-11-17 实测）：WebSocket 流式，匿名可用。
+    #: `wss://vse.baidu.com/ws_api?sn=<uuid>` + START{dev_key,dev_pid:8068,sample:16000}
+    #: + PCM16k 推流 + FINISH → FIN_TEXT（带标点）。
+    "wenxin:asr": Capability(
+        name="wenxin:asr", title="语音识别",
+        tool_type=None, verified=True, media_kind="asr",
+        evidence="2026-11-17 实测（§17）：协议反编译自 common.js VoiceInput 组件；"
+                 "edge-tts 合成语音 → PCM16k → 全速推流，FIN_TEXT 逐字正确带标点；"
+                 "无需 cookie、无风控触发",
+        notes="端点 /v1/audio/transcriptions；接受 wav（自动转 16k mono）/裸 pcm",
     ),
     "wenxin:matting": Capability(
         name="wenxin:matting", title="抠图", **_verified_main(
