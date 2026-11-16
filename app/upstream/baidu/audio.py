@@ -248,3 +248,61 @@ def pcm16k_from_wav(data: bytes) -> bytes:
     samples = _to_mono(channels, sampwidth, frames)
     samples = _resample(samples, rate)
     return struct.pack(f"<{len(samples)}h", *samples)
+
+
+# ---------------------------------------------------------------------------
+# 长音频分段（上游硬限：< 60s，实测 59s OK / 60s 回 -3006 sdk speech is too long）
+# ---------------------------------------------------------------------------
+
+#: 上游单次会话的硬上限（秒）。留 1s 余量——60.0s 实测被拒，59.0s 通过。
+ASR_MAX_SECONDS = 59.0
+#: 切段目标上限（比硬限再留余量：VAD/尾包可能让服务端多算一点时长）
+ASR_CHUNK_SECONDS = 55.0
+#: 找静音的搜索下界（不会切得比这更短，避免碎成太多段）
+ASR_CHUNK_MIN_SECONDS = 40.0
+
+
+def split_pcm_silence(pcm: bytes, *, sample_rate: int = ASR_SAMPLE,
+                      max_s: float = ASR_CHUNK_SECONDS,
+                      min_s: float = ASR_CHUNK_MIN_SECONDS) -> list[bytes]:
+    """把超长 PCM 按**静音点**切段（每段 < 60s 硬限）。
+
+    切点策略：在 `[min_s, max_s]` 窗口内**从后往前**找能量最低的 20ms 帧
+    （遇足够静音提前停）——尽量不在词中间切断；找不到静音就硬切在 max_s。
+    输入/输出都是 16k mono s16le。
+    """
+    if not pcm:
+        return []
+    bytes_per_sec = sample_rate * 2
+    total_s = len(pcm) / bytes_per_sec
+    if total_s <= max_s:
+        return [pcm]
+
+    frame = bytes_per_sec // 50            # 20ms
+    chunks: list[bytes] = []
+    pos = 0
+    while pos < len(pcm):
+        remain = (len(pcm) - pos) / bytes_per_sec
+        if remain <= max_s:
+            chunks.append(pcm[pos:])
+            break
+        lo = pos + int(min_s * bytes_per_sec) // frame * frame
+        hi = pos + int(max_s * bytes_per_sec) // frame * frame
+        best, best_e = hi, None
+        p = hi - frame
+        while p >= lo:
+            seg = pcm[p: p + frame]
+            if len(seg) < frame:
+                p -= frame
+                continue
+            # 能量：绝对值均值（int16 小端）
+            vals = memoryview(seg).cast("h") if len(seg) % 2 == 0 else None
+            e = (sum(abs(v) for v in vals) / len(vals)) if vals else 1e9
+            if best_e is None or e < best_e:
+                best_e, best = e, p
+                if e < 80:                  # 足够静音：提前停
+                    break
+            p -= frame
+        chunks.append(pcm[pos:best])
+        pos = best
+    return chunks

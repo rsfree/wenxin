@@ -11,6 +11,7 @@ import base64
 import hashlib
 import io
 import json
+import math
 import struct
 import time
 import wave
@@ -182,3 +183,44 @@ def test_tts_voices_whitelist_is_seven_and_well_formed():
         assert per.isdigit()
         assert meta["gender"] in ("female", "male", "child")
         assert meta["f0"].endswith("Hz")
+
+
+# ------------------------------------------------------------------ 长音频分段
+def _pcm_with_silence(seconds: float, *, tone_amp: int = 3000,
+                      silence_every: float = 6.0, silence_len: float = 0.3) -> bytes:
+    """造一段「有声-静音」交替的 PCM（16k mono s16le），便于验证切点落在静音区。"""
+    sr = 16000
+    n = int(sr * seconds)
+    out = bytearray()
+    for i in range(n):
+        t = i / sr
+        silent = (t % silence_every) > (silence_every - silence_len)
+        v = 0 if silent else int(tone_amp * math.sin(2 * math.pi * 220 * t))
+        out += struct.pack("<h", v)
+    return bytes(out)
+
+
+def test_split_short_audio_is_single_chunk():
+    pcm = _pcm_with_silence(10)
+    assert audio.split_pcm_silence(pcm) == [pcm]
+
+
+def test_split_long_audio_respects_max_and_covers_all():
+    pcm = _pcm_with_silence(150)          # 150s → 至少 3 段
+    chunks = audio.split_pcm_silence(pcm)
+    assert len(chunks) >= 3
+    # 每段 < 60s 硬限；拼回去与原文一致（不丢样本）
+    for c in chunks:
+        assert len(c) / 32000 <= audio.ASR_CHUNK_SECONDS + 0.01
+    assert b"".join(chunks) == pcm
+    # 切点应落在静音区：检查每段结尾 200ms 的能量很低
+    for c in chunks[:-1]:
+        tail = c[-6400:]                  # 200ms
+        vals = struct.unpack(f"<{len(tail)//2}h", tail)
+        assert sum(abs(v) for v in vals) / len(vals) < 500, "切点应在静音处"
+
+
+def test_split_handles_exact_boundary():
+    # 恰好 55s：单段
+    pcm = _pcm_with_silence(55)
+    assert len(audio.split_pcm_silence(pcm)) == 1

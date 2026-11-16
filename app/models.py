@@ -216,7 +216,8 @@ CAPABILITIES: dict[str, Capability] = {
         evidence="2026-11-17 实测（§17）：协议反编译自 common.js VoiceInput 组件；"
                  "edge-tts 合成语音 → PCM16k → 全速推流，FIN_TEXT 逐字正确带标点；"
                  "无需 cookie、无风控触发",
-        notes="端点 /v1/audio/transcriptions；接受 wav（自动转 16k mono）/裸 pcm",
+        notes="端点 /v1/audio/transcriptions；接受 wav（自动转 16k mono）/裸 pcm；"
+              "上游单会话硬限 <60s（59s OK/60s 回 -3006），超长自动按静音分段再拼接",
     ),
     "wenxin:matting": Capability(
         name="wenxin:matting", title="抠图", **_verified_main(

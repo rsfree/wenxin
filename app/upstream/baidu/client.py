@@ -774,7 +774,33 @@ class BaiduClient:
 
         实证（§17）：匿名可用、全速推流不丢字；`FIN_TEXT` 为最终结果（带标点）。
         只吃 **16k mono s16le** —— 调用方负责把 wav 转好（`audio.pcm16k_from_wav`）。
+
+        **长音频**：上游单会话硬限 < 60s（实测 59s OK / 60s 回
+        `-3006 sdk speech is too long`）⇒ 超长时按静音点自动切段（`audio.split_pcm_silence`），
+        逐段识别后拼接。切段与逐段重连都在这里完成，调用方无感。
         """
+        chunks = audio_mod.split_pcm_silence(pcm16k_mono)
+        total_s = round(len(pcm16k_mono) / 32000, 2)
+        info: dict[str, Any] = {"path": "asr", "pcm_bytes": len(pcm16k_mono),
+                                "seconds": total_s, "chunks": len(chunks)}
+        if len(chunks) > 1:
+            # 每段都是独立会话（上游硬限），串行避免并发风控
+            pieces: list[str] = []
+            for idx, c in enumerate(chunks):
+                text, sub = await self._asr_once(c, timeout_s=timeout_s)
+                pieces.append(text)
+                logger.info(f"asr 分段 {idx + 1}/{len(chunks)}："
+                            f"{sub['seconds']}s → {len(text)} chars")
+            info["chunk_seconds"] = [round(len(c) / 32000, 1) for c in chunks]
+            info["frames"] = 0
+            return "".join(pieces), info
+        text, sub = await self._asr_once(pcm16k_mono, timeout_s=timeout_s)
+        info.update({"frames": sub["frames"]})
+        return text, info
+
+    async def _asr_once(self, pcm16k_mono: bytes,
+                        *, timeout_s: float) -> tuple[str, dict[str, Any]]:
+        """单次 ASR 会话（< 60s 的 PCM）。"""
         import websockets  # noqa: PLC0415 - 仅此路径需要，避免全局引入
 
         info: dict[str, Any] = {"path": "asr", "pcm_bytes": len(pcm16k_mono),
