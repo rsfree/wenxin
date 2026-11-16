@@ -77,3 +77,26 @@ def test_panel_dry_run_hits_the_shared_validation_path(tmp_path):
     assert body["dry_run"] is True
     assert body["preview"]["would_post_to"].endswith("/aichat/api/conversation")
     assert body["effective"]["query"] == "变清晰"
+
+
+def test_stats_is_an_ops_endpoint_behind_the_same_key(tmp_path):
+    """/stats 是运维面：与 /v1 同一把 Key，且给出闸门/风险窗/span 三样。"""
+    app = _app(tmp_path, API_KEYS="sk-live")
+    with TestClient(app) as c:
+        assert c.get("/stats").status_code == 401
+        r = c.get("/stats", headers={"authorization": "Bearer sk-live"})
+    assert r.status_code == 200
+    body = r.json()
+    assert set(body) == {"version", "risk_window", "rate_gate", "spans"}
+    assert body["risk_window"]["cooling"] is False
+    assert isinstance(body["spans"], list)
+
+
+def test_landing_page_links_the_panel_and_llms_txt(tmp_path):
+    """落地页是给人看的第一屏：必须能点进面板与说明书，否则等于藏起来。"""
+    app = _app(tmp_path)
+    with TestClient(app) as c:
+        r = c.get("/")
+    assert r.status_code == 200
+    assert 'href="/panel"' in r.text
+    assert 'href="/llms.txt"' in r.text

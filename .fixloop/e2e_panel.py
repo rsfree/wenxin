@@ -79,6 +79,22 @@ def must(*args: str, what: str = "", timeout: float = 60) -> str:
     return out
 
 
+def find_role_ref(vom: str, role: str, needle: str = "") -> str:
+    """按 role 定位（combobox / checkbox 之类，光靠文本会误命中同名字的静态文本）。"""
+    for line in vom.splitlines():
+        m = re.search(r"(@e\d+)\s+" + role + r"\s+\"[^\"]*\"", line)
+        if m and needle in line:
+            return m.group(1)
+    raise StepError(f"页面里找不到 role={role} 且含「{needle}」的节点")
+
+
+def select_model(vom: str, model_id: str) -> str:
+    """在测试台的模型下拉里选一项（原生 select，触发 change ⇒ 表单字段联动）。"""
+    ref = find_role_ref(vom, "combobox", "变清晰")
+    must("select", ref, "--value", model_id, what=f"选择模型 {model_id}")
+    return must("sync", what="选择模型后同步")
+
+
 def find_ref(vom: str, needle: str) -> str:
     for ref, text in REF_RE.findall(vom):
         if needle in text:
@@ -175,6 +191,39 @@ def run_flow(real: bool, mutation: bool) -> list[str]:
     require(vom, "dry-run", "结果区")
     require(vom, "变清晰" if not mutation else "必然不存在的字串", "结果区")
     done.append("R4 干跑链路")
+
+    # ---- R9 字段联动：不同能力暴露不同必填项 ----
+    vom = click_text(vom, "测试台")
+    vom = select_model(vom, "wenxin:erase")
+    require(vom, "遮罩（黑底白框", "字段联动")
+    vom = select_model(vom, "wenxin:restyle")
+    require(vom, "风格", "字段联动")
+    vom = select_model(vom, "wenxin:expand")
+    require(vom, "比例（扩图专用）", "字段联动")
+    vom = select_model(vom, "wenxin:clarity")      # 收尾：回到默认能力
+    done.append("R9 字段联动（mask/style/size）")
+
+    # ---- R10 主题切换（断言落在 DOM 上，VOM 看不到 data-theme）----
+    must("click", find_ref(vom, "切换主题"), what="切换主题")
+    must("sync")
+    html = must("get-html", what="取 HTML")
+    if 'data-theme="dark"' not in html:
+        raise StepError("主题切换：点了以后 data-theme 没有变成 dark")
+    must("click", find_ref(vom, "切换主题"), what="切回主题")
+    must("sync")
+    done.append("R10 主题切换")
+
+    # ---- R11 关于页 ----
+    vom = click_text(vom, "关于")
+    require(vom, "OpenAPI", "关于页")
+    require(vom, "/stats", "关于页")
+    done.append("R11 关于页")
+
+    # ---- R12 清空结果 ----
+    vom = click_text(vom, "测试台")
+    vom = click_text(vom, "清空结果")        # 清空**之后**才应是「尚未运行」
+    require(vom, "尚未运行", "清空结果")
+    done.append("R12 清空结果")
 
     # ---- R6 日志页 ----
     vom = click_text(vom, "日志")

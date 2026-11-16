@@ -12,6 +12,11 @@
 | R6 | 日志页签能读到进程日志 | 点击「日志」后 VOM 含 `BAIDU_` 开头的运维日志行 | ✅ |
 | R7 | 上传本地文件 | 无法自动化：`bsk upload` 在本环境对**裸 `input[type=file]`** 也返回 `-32000 Not allowed`（对照实验见 `.fixloop/notes-env.md`） | ❌ **uncovered（ENV）** |
 | R8 | 浏览器刷新后 hash 直达页签 | `/#try` 直达测试台（回归上一轮修的 hashchange bug） | ✅ |
+| R9 | 面板按能力暴露必填项 | 选 erase→出现遮罩、restyle→出现风格、expand→出现比例 | ✅ |
+| R10 | 主题切换 | 点击后 DOM `data-theme="dark"`，再点回浅色 | ✅ |
+| R11 | 关于页 | 含 OpenAPI / `/stats` 端点清单 | ✅ |
+| R12 | 清空结果 | 点击后结果区回到「尚未运行」 | ✅ |
+| R13 | 面板 401 密钥对话框 | 带 `BAIDU_API_KEYS` 的实例上：弹窗 → 填 Key → 能力表加载（手工验证，见交付说明） | ⚠️ 手工 |
 
 ## 判据形态说明
 
