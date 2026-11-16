@@ -97,7 +97,7 @@ def validate_request(
             "data URI（`data:image/png;base64,...`）、http(s) URL、裸 base64",
         )
     if cap.chat_shape:
-        # chat 形状必须有 prompt（文生图不需要 image；图生图两者都要）
+        # chat 形状必须有 prompt（文生图不需要 image）
         _p = payload.get("prompt")
         if not isinstance(_p, str) or not _p.strip():
             raise ApiError(400, "missing_prompt",
@@ -215,7 +215,7 @@ async def run(
     #  · workspace 形状：query 必须严格等于能力名（chat_token 的 md5 与它绑定）。
     query_text = cap.title
     if cap.chat_shape:
-        # chat 形状（文生图 / 图生图）：**prompt 即 query**（抓包实测，chat_token 也按它算）
+        # chat 形状（文生图）：**prompt 即 query**（抓包实测，chat_token 也按它算）
         query_text = (prompt or "").strip()
         if not query_text:
             raise ApiError(400, "missing_prompt", f"「{cap.title}」需要 prompt")

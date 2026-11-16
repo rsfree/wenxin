@@ -180,9 +180,9 @@ def build_body(
     # **本服务不使用**（实测只回对话文字/编辑器链接）—— 证据留在 docs/UPSTREAM.md §7。
     # enter_type 仅作为 workspace 形状里的 `enter_type` 取值（见下）。
     ext: dict[str, Any] = {"type": tt, "image": image_url, "image_source": 0, "channel": "edit"}
+    sa = cap.workspace_sa or f"workspace_piccreate_{tt}"
     if expand:
         ext["image_expand"] = expand
-    sa = cap.workspace_sa or f"workspace_piccreate_{tt}"
     if cap.needs_style:
         # 实测（2026-09-24，站点 UI 真实报文）：风格类工具的 `sa` 是**专属字母码**
         # （换风格 = `workspace_piccreate_hfg`），且 ext 里必须带 `style`(id) / `text`(标签)、
