@@ -4,8 +4,8 @@
 19 项能力、图进图出、一条 `POST` 拿到结果；`GET /llms.txt` 给 LLM 的自述说明书。工程骨架参考 `../textin` / `../jimeng`。
 
 ```bash
-# 1) 铸造匿名身份（免登录、零生成请求；在 reverse-proxy 仓）
-python wenxin/tools/mint_identity.py        # 产物 wenxin/var/identity.json 的 `cookie` 字段
+# 1) 铸造匿名身份（免登录、零生成请求；本仓自带，两步采集 www + image，约 0.15s）
+python scripts/mint_identity.py             # 产物 var/identity.json 的 `cookie` 字段
 
 # 2) 起服务
 cp .env.example .env                        # 把上一步的 cookie 填进 BAIDU_COOKIE
