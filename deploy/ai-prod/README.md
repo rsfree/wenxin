@@ -35,12 +35,16 @@ ssh -N -L 18700:127.0.0.1:39014 -i ~/.ssh/id_ed25519_auto_macstudio root@210.121
 open http://127.0.0.1:18700/panel
 ```
 
-## ⚠️ 已知安全项（决策留待业务方）
+## 鉴权（2026-11-17 起）
 
-`BAIDU_API_KEYS` 为空 ⇒ **`/v1/images/generations` 对公网无鉴权**（本次升级前就如此）。
-本服务用的是匿名 cookie，被刷的代价是：消耗该匿名身份的额度、可能触发上游风控。
-若要收紧：在 `.env` 设 `BAIDU_API_KEYS=<key1,key2>` 后重启，并让调用方带 `Authorization: Bearer`。
-**先确认没有未带 key 的调用方再改**，否则会打断现网集成。
+- **Key 命名约定：`sk-` + 二级域名** —— 本站点 `baidu.1task.cn` ⇒ **`sk-baidu`**。
+  值只写在 `.env` 的 `BAIDU_API_KEYS`，**不入库、不进文档**。
+- 调用方须带 `Authorization: Bearer sk-baidu`；`/v1/models` 与 `/healthz` 按设计免鉴权
+  （发现端点，兄弟服务一致）。
+- 改配置后 `docker compose up -d --force-recreate`（`env_file` 变更不会自动重建容器）。
+
+已验证（公网）：无 key → **401**；错 key → **401**；`sk-baidu` → **200**；
+`/v1/models` → **200**；`/healthz` → `0.0.18`。
 
 ## 回滚
 
