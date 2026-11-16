@@ -27,6 +27,9 @@ import urllib.error
 import urllib.request
 from typing import Any
 
+#: 响应 mime → 落盘扩展名（WebP 是抠图的默认形态，别当 jpg）。
+_EXT_BY_MIME = {"image/webp": "webp", "image/png": "png", "image/jpeg": "jpg"}
+
 #: 与站点工具栏一一对应。`extra` 里的 `__MASK__` 由 `--mask` 注入。
 CASES: tuple[tuple[str, str, str, dict[str, Any]], ...] = (
     ("clarity", "变清晰", "jd", {}),
@@ -122,7 +125,11 @@ def main() -> int:
             blob = item.get("b64_json")
             if blob and not args.dry:
                 raw = base64.b64decode(blob)
-                ext = "png" if raw[:8] == b"\x89PNG\r\n\x1a\n" else "jpg"
+                # 按**响应里的 mime** 定扩展名：抠图返回的是 WebP（带 alpha），
+                # 一律当 jpg 存会得到"能打开但扩展名错"的文件（实测踩过）。
+                ext = _EXT_BY_MIME.get(str(item.get("mime") or ""), "jpg")
+                if not ext:
+                    ext = "png" if raw[:8] == b"\x89PNG\r\n\x1a\n" else "jpg"
                 fp = args.out / f"{idx:02d}-{short}{'-dry' if args.dry else ''}.{ext}"
                 fp.write_bytes(raw)
                 row["file"] = str(fp)
