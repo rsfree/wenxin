@@ -383,10 +383,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 raise ApiError(400, "missing_input", "缺少 input（要合成的文本）")
             voice = payload.get("voice")
             if voice is not None:
-                voice = str(voice)
-                if not voice.isdigit():
-                    raise ApiError(400, "invalid_voice",
-                                   "voice 必须是发音人编号（如 4100 / 0 / 1 / 3 / 4）")
+                resolved = audio.resolve_voice(str(voice))
+                if not resolved:
+                    voices = "、".join(f"{k}({v['name']})" for k, v in audio.TTS_VOICES.items())
+                    aliases = "、".join(sorted(set(audio.VOICE_ALIASES)))
+                    raise ApiError(
+                        400, "invalid_voice",
+                        f"voice={voice!r} 不可用。实测可用音色：{voices}；"
+                        f"语义别名：{aliases}")
+                voice = resolved
             rate = str(payload.get("rate") or "64")
             if rate not in ("32", "64", "128"):
                 raise ApiError(400, "invalid_rate",

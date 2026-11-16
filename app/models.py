@@ -202,7 +202,10 @@ CAPABILITIES: dict[str, Capability] = {
                  "tk 算法与 chat_token 完全同构（base64(token|md5(text)|ts|lid)-lid-3）；"
                  "POST body={text} → contentList 分句 mp3（per=4100）；"
                  "rate 是**比特率**（32/64/128kbps，时长不变），不是语速",
-        notes="端点 /v1/audio/speech；voice → per（默认 4100）",
+        notes="端点 /v1/audio/speech；**7 个实测授权音色**：0(度小美)/4003(度逍遥臻品)/"
+              "4100(度小雯)/4106(度博文)/4115(度小贤)/4118/4201；"
+              "其它 per 回 501（failed to cluster verify with pdt:1336）；"
+              "语义别名 female/male/child/lowmale；rate 是比特率 32/64/128",
     ),
     #: 语音识别（2026-11-17 实测）：WebSocket 流式，匿名可用。
     #: `wss://vse.baidu.com/ws_api?sn=<uuid>` + START{dev_key,dev_pid:8068,sample:16000}

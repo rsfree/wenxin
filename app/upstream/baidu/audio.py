@@ -32,6 +32,50 @@ TTS_VOICE = "4100"
 TTS_RATE = "64"
 TTS_RATES = ("32", "64", "128")
 
+#: 文心接口（pdt=1336）**实测授权**的音色白名单 —— 共 7 个。
+#: 其它编号全部回 `err_no=501 / err_subcode=23`：
+#: `failed to cluster verify with per:<n> and pdt:1336`。
+#: 名字取百度智能云公开的 per 命名；F0 为本服务实测的基频中位数（男女声佐证）。
+TTS_VOICES: dict[str, dict[str, str]] = {
+    "0":    {"name": "度小美", "gender": "female", "f0": "267Hz", "bank": "基础"},
+    "4003": {"name": "度逍遥（臻品）", "gender": "male", "f0": "136Hz", "bank": "臻品"},
+    "4100": {"name": "度小雯", "gender": "female", "f0": "254Hz", "bank": "臻品"},
+    "4106": {"name": "度博文", "gender": "male", "f0": "117Hz", "bank": "臻品"},
+    "4115": {"name": "度小贤", "gender": "male", "f0": "88Hz", "bank": "臻品"},
+    "4118": {"name": "未公开编号 A", "gender": "female", "f0": "276Hz", "bank": "（文心专用）"},
+    "4201": {"name": "未公开编号 B", "gender": "child", "f0": "314Hz", "bank": "（文心专用）"},
+}
+
+#: 语义别名 → per（方便调用方不记编号）
+VOICE_ALIASES: dict[str, str] = {
+    "female": "4100",     # 度小雯（女，默认）
+    "male": "4106",       # 度博文（男）
+    "child": "4201",      # 高音童声
+    "lowmale": "4115",    # 度小贤（低音男）
+    "xiaomei": "0",
+    "xiaowen": "4100",
+    "bowen": "4106",
+    "xiaoxian": "4115",
+    "xiaoyao": "4003",
+}
+
+
+def resolve_voice(voice: str | None) -> str | None:
+    """把 `voice` 参数解析成 per 编号。
+
+    - `None` / 空 ⇒ None（不传，服务端给 4100）
+    - 数字 ⇒ 原样（**不预校验白名单**：上游错误信息比我们硬编码的列表更新得准）
+    - 别名（female/male/child/…）⇒ 对应编号
+    """
+    if voice is None:
+        return None
+    v = str(voice).strip().lower()
+    if not v:
+        return None
+    if v.isdigit():
+        return v
+    return VOICE_ALIASES.get(v)
+
 
 def tts_url(token: str, lid: str, text: str, *, voice: str | None = None,
             rate: str = TTS_RATE) -> str:

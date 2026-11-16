@@ -160,3 +160,25 @@ def test_audio_data_uri():
 def test_tts_url_json_serializable_frames():
     """START 帧必须能 JSON 序列化（WS 发送用）。"""
     json.dumps(audio.asr_start_frame(), ensure_ascii=False)
+
+
+# ------------------------------------------------------------------ 音色
+def test_resolve_voice_aliases_and_numbers():
+    assert audio.resolve_voice(None) is None
+    assert audio.resolve_voice("") is None
+    assert audio.resolve_voice("4100") == "4100"
+    assert audio.resolve_voice("female") == "4100"
+    assert audio.resolve_voice("MALE") == "4106"      # 大小写不敏感
+    assert audio.resolve_voice("child") == "4201"
+    assert audio.resolve_voice("lowmale") == "4115"
+    assert audio.resolve_voice("xiaomei") == "0"
+    assert audio.resolve_voice("not-a-voice") is None
+
+
+def test_tts_voices_whitelist_is_seven_and_well_formed():
+    """白名单 = 实测授权的 7 个（其它编号上游回 501/err_subcode 23）。"""
+    assert set(audio.TTS_VOICES) == {"0", "4003", "4100", "4106", "4115", "4118", "4201"}
+    for per, meta in audio.TTS_VOICES.items():
+        assert per.isdigit()
+        assert meta["gender"] in ("female", "male", "child")
+        assert meta["f0"].endswith("Hz")

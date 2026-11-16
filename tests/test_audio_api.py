@@ -101,12 +101,22 @@ def test_tts_voice_and_rate_pass_through(tmp_path):
     spy = _tts_spy()
     with TestClient(app) as c:
         _inject(app, spy)
+        # 编号直传
         r = c.post(SPEECH, json={"model": "wenxin:tts", "input": "你好",
-                                 "voice": "3", "rate": "128"})
-    assert r.status_code == 200
-    req = [q for q in spy.seen if q.url.path == "/aichat/api/tts"][0]
-    assert req.url.params["per"] == "3"
-    assert req.url.params["rate"] == "128"
+                                 "voice": "4106", "rate": "128"})
+        assert r.status_code == 200
+        req = [q for q in spy.seen if q.url.path == "/aichat/api/tts"][-1]
+        assert req.url.params["per"] == "4106"
+        assert req.url.params["rate"] == "128"
+        # 语义别名（female → 4100）
+        r = c.post(SPEECH, json={"model": "wenxin:tts", "input": "你好", "voice": "female"})
+        assert r.status_code == 200
+        req = [q for q in spy.seen if q.url.path == "/aichat/api/tts"][-1]
+        assert req.url.params["per"] == "4100"
+        # 未知别名 → 400 且列出可用音色
+        r = c.post(SPEECH, json={"model": "wenxin:tts", "input": "你好", "voice": "robot"})
+        assert r.status_code == 400 and r.json()["error"]["code"] == "invalid_voice"
+        assert "度小雯" in r.json()["error"]["message"]
 
 
 def test_tts_validation_errors(tmp_path):

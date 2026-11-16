@@ -182,7 +182,7 @@
 |---|---|---|
 | `wenxin:draw` | **文生图**：只给 `prompt`，不给 `image`；返回 4 张 864×1152 | ✅ 2026-11-17 |
 | `wenxin:lyrics` | **歌词生成**（文本产出型）：只给 `prompt`，返回 `data[0].text`（两版歌词 ≈700 字）；**不出音频**（匿名态音频工作台被 `scene=create_limit` 硬拒，见 UPSTREAM §16） | ✅ 2026-11-17 |
-| `wenxin:tts` | **语音合成**：`/v1/audio/speech`，`input` 即文本；`voice`→发音人 per（默认 4100）、`rate` 是**比特率** 32/64/128（不是语速）；返回合并后的 mp3 | ✅ 2026-11-17 |
+| `wenxin:tts` | **语音合成**：`/v1/audio/speech`，`input` 即文本；`voice` 支持 7 个实测音色（0/4003/4100/4106/4115/4118/4201）+ 语义别名（female/male/child/lowmale），`rate` 是**比特率** 32/64/128（不是语速）；返回合并后的 mp3 | ✅ 2026-11-17 |
 | `wenxin:asr` | **语音识别**：`/v1/audio/transcriptions`，接受 wav（自动转 16k mono）或 16k mono s16le 裸 pcm；**容器无 ffmpeg**，mp3/m4a 需调用方先转 | ✅ 2026-11-17 |
 | `wenxin:clarity` | 变清晰（4× 放大，上限 5472×3072） | ✅ |
 | `wenxin:expand` | 扩图（消费 `size`） | ✅ |
