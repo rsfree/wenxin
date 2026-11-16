@@ -465,6 +465,9 @@ class BaiduClient:
         链路（契约 §7 兜底方案）：① `GET /aichat/api/file/sts` → ② 初始化分片 →
         ③ PUT 分片 → ④ 合并 → ⑤ `POST /aichat/api/file/upload` 登记。
 
+        ⚠️ 返回的 URL **必须优先用登记录下发的 `data.file_url`（带签名）**，
+        不能自己拼 `CDN_BASE + 路径` —— 见下方实测证据。
+
         ⚠️ `jpg` 必须映射为 `image/jpeg`（写成 `image/jpg` 是历史上的真实失败诱因）；
         整条链**共用一个 session** —— 有池时保证 5 步落在同一出口上。
         """
@@ -514,6 +517,19 @@ class BaiduClient:
                 )
 
             reg = await self._register(client, prefix + name, len(data), name)
+
+        # 🔴 登记录返回的 `data.file_url` 是**带签名**的（`?authorization=bce-auth-v1/…`，
+        # 有效期 24h）。自己拼出来的无签名地址对匿名 GET 是 **403** —— 2026-11-16 实测，
+        # 同一个对象：无签名 `HTTP 403（101B 错误体）` / 带签名 `HTTP 200（32377B 原图）`。
+        # 上游抓不到输入图时**只回一句笼统的「抱歉，服务繁忙，请稍后再试」**，5 帧、无
+        # `chatHitKunlun` —— 极易被误判成风控或身份问题（本项目就在这上面绕了两轮）。
+        # 仅在 file_url 缺失、或不是绝对地址时，才回退到拼装值（联调与单测走这条路）。
+        signed_url = ""
+        reg_data = reg.get("data") if isinstance(reg, dict) else None
+        if isinstance(reg_data, dict):
+            signed_url = str(reg_data.get("file_url") or "")
+        if signed_url.startswith(("http://", "https://")):
+            return signed_url, reg
         return f"{self._s.CDN_BASE.rstrip('/')}/{prefix}{name}", reg
 
     # ------------------------------------------------------------------ 老接口兜底

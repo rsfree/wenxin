@@ -34,6 +34,7 @@ from tests.helpers import (
     hint_frame,
     homepage_html,
     kunlun_frame,
+    register_ok,
     settings,
     sse_response,
 )
@@ -277,6 +278,39 @@ def test_upload_image_chain_shapes():
     assert body["type"] == "image" and body["size"] == len(JPEG_SMALL)
     assert body["path"].startswith("pic_create/test/") and body["name"].endswith(".jpg")
     assert body["id"], "id（base64 时间戳）不能为空"
+
+
+def test_upload_prefers_signed_file_url_from_registration():
+    """登记录下发的 `file_url` **带签名** ⇒ 必须原样用，不能自己拼。
+
+    依据（2026-11-16 实测，同一对象两种 URL）：
+      无签名 `https://<CDN_BASE>/<prefix><name>` → **HTTP 403（101B 错误体）**
+      带签名 `<file_url>?authorization=bce-auth-v1/…`  → **HTTP 200（原图字节）**
+    上游抓不到输入图时只回笼统的「抱歉，服务繁忙」，所以这条要是错了，
+    整条主链都表现为「疑似风控」，排查会被带偏。
+    """
+    signed = ("https://aisearch.cdn.bcebos.com/pic_create/test/x.jpg"
+              "?authorization=bce-auth-v1/ak-1/2026-11-16T08:09:01Z/86400/host/sig-1")
+    spy = UpstreamSpy(routes={
+        "/aichat/api/file/upload": lambda req: httpx.Response(200, json=register_ok(signed)),
+    })
+    _, client = _client(spy)
+    url, _ = arun(client.upload_image(JPEG_SMALL, "jpeg"))
+    arun(client.aclose())
+    assert url == signed
+
+
+def test_upload_falls_back_to_assembled_url_when_file_url_is_not_absolute():
+    """`file_url` 不可用（缺字段 / 相对值）时才回退拼装 —— 别让联调替身把主链带歪。"""
+    for bad in ("", "ok", "/pic_create/test/x.jpg"):
+        spy = UpstreamSpy(routes={
+            "/aichat/api/file/upload": lambda req, b=bad: httpx.Response(200, json=register_ok(b)),
+        })
+        conf, client = _client(spy)
+        url, _ = arun(client.upload_image(JPEG_SMALL, "jpeg"))
+        arun(client.aclose())
+        assert url.startswith(f"{conf.CDN_BASE}/pic_create/test/"), (bad, url)
+        assert "?" not in url, (bad, url)
 
 
 def test_upload_png_keeps_standard_png_mime():
