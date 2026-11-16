@@ -556,3 +556,59 @@ A 变体揭示了一条**可用的匿名旁路**：裸 bkb 对话形状下，「
   作为匿名对话的一部分开放，本服务借同一形状吸收。
 - 前端墙不是墙：任何「前端弹登录框」的功能都值得用直打后端的方式复核一次 ——
   后端判定可能比前端宽松（歌词）也可能相同（音频），只有实测才能定论。
+
+
+### 16.6 第二轮对抗：sa 映射破译与类型级判定（同日续测）
+
+**sa 映射全部破译**（common.js @598680 的 inputInfo 组装 + chat-main 的 updateSa）：
+
+```js
+y = {ai_chat:'aidialog', ai_ppt:'ppt', office_create:'office',
+     photo_editing:'pic', ai_read:'read', ai_translate:'translate'};
+capability.enabled && Object.assign(y, {ai_music_create:'music', ai_numerology:'yunshi',
+                                         deep_decision:'deepdecision', ...});
+sa = 'functab_' + y[panelType];        // 音乐 = functab_music
+// 另一条路径（launchSearch）：sa = 'bkb_functab_' + 短名
+```
+
+注意 `capability.enabled` 开关：匿名态若为 false，y 表里没有 music，sa 会 fallback 到
+`home_wenxin` —— 但这是前端行为，与后端判定无关（见下）。
+
+**类型级判定的对照实验**（决定性）：
+
+| 变体 | 形状 | 结果 |
+|---|---|---|
+| G1 | 裸 bkb + `interaction_type=8`（photo_editing）+ 柴犬插画 query | **37 帧正常**：`imageScroll` 组件 + 文本，无 login-guide |
+| F1 | `sa=bkb_functab_music` + `interaction_type=13` | 8 帧 login-guide |
+| F2 | `sa=functab_music` + `interaction_type=13`（enter_type=unknown） | 8 帧 login-guide |
+| H1 | 裸 bkb + `it=13` + `mcpInfo{type:workspaceMusic}` | 8 帧 login-guide |
+
+⇒ **后端拦截的是 `interaction_type=13` 本身**，与 sa / mcpInfo / enter_type 全部无关。
+it=8 匿名可过、it=13 一律拒 ⇒ 这是**类型级白名单**，不是全局登录墙，
+也不是「配额用尽」（换新身份 todayRound=2 仍拒，见 16.2）。
+
+**UI 侧也是面板级判定**：音乐面板里「AI写歌词 / 自定义歌词」两种生成方式都试过提交
+—— 均弹登录框、零请求。移动端 UA（iPhone 模拟）同样弹（同一份 SPA、同一处判定）。
+
+**技能体系排除**：`GET /aichat/api/skills/panel` 匿名可取（83KB，13 个标签）；
+「多媒体创作」13 个技能中**没有音乐**（有视频/海报/证件照）。⇒ 音乐是**独立内置工具**，
+不是「技能授权不足」的问题，带 skillId 也解决不了。
+
+**老接口排除**：`image.baidu.com/aigc/pccreate` 测 type=13/15/11 —— 13 报网络异常，
+15/11 正常建任务但都是**图片任务**（pcEditTaskid），无音乐通路。
+
+**公开资料**：GitHub 的 baiduchat2api 项目（百度 chat 逆向）只做对话模型，
+不涉及音乐；没有其他人公开过文心音乐接口。
+
+### 16.7 最终结论（第二轮后）
+
+音频生成在匿名态**没有任何通路**。已穷尽的维度：
+
+- 前端：填词/做同款/AI写歌词模式 × 桌面/移动 UA —— 全部弹登录、零请求
+- 后端：4 种 sa × 4 种 mcpInfo 组合 × it=13 —— 全部 login-guide
+- 技能体系：音乐不是技能，无 skillId 可用
+- 老接口：无音乐类型
+- 公开资料：无人公开过
+
+**要真音乐，唯一的路是登录态 cookie**（BAIDUSS 等），代价：账号绑定、cookie 会过期、
+风控落在账号上 —— 这是本服务「匿名吸收」原则的边界。
