@@ -381,6 +381,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             text = payload.get("input")
             if not isinstance(text, str) or not text.strip():
                 raise ApiError(400, "missing_input", "缺少 input（要合成的文本）")
+            text = text.strip()
+            if len(text) > audio.TTS_MAX_CHARS:
+                raise ApiError(
+                    400, "text_too_long",
+                    f"input 超过 {audio.TTS_MAX_CHARS} 字符上限（当前 {len(text)}）。"
+                    f"上游实测 8.8 万字仍可受理，但本服务要**逐段代取音频**，"
+                    f"超长文本会让单次请求变成数分钟；请自行分段批次调用")
             voice = payload.get("voice")
             if voice is not None:
                 resolved = audio.resolve_voice(str(voice))
@@ -396,7 +403,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if rate not in ("32", "64", "128"):
                 raise ApiError(400, "invalid_rate",
                                "rate 是**比特率**（32/64/128 kbps，实测不是语速）")
-            raw, info = await _client(request).tts(text.strip(), voice=voice, rate=rate)
+            raw, info = await _client(request).tts(text, voice=voice, rate=rate)
             logger.info(f"tts: {info['segments']} segs / {info['bytes']}B / rate={rate}")
             return Response(content=raw, media_type="audio/mpeg",
                             headers={"X-Segments": str(info["segments"])})

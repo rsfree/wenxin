@@ -306,3 +306,9 @@ def split_pcm_silence(pcm: bytes, *, sample_rate: int = ASR_SAMPLE,
         chunks.append(pcm[pos:best])
         pos = best
     return chunks
+
+
+#: TTS 单次请求的**字符上限**（本服务策略，非上游限制）。
+#: 上游实测 8.8 万字仍返回 3401 段 URL；但本服务要逐段代取音频，
+#: 超长文本会把一次 HTTP 变成几分钟。4096 与 OpenAI TTS 的语义对齐。
+TTS_MAX_CHARS = 4096

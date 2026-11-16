@@ -237,3 +237,17 @@ def test_asr_accepts_raw_pcm(tmp_path, monkeypatch):
                    data={"model": "wenxin:asr"})
     assert r.status_code == 200 and r.json()["text"] == "raw"
     assert seen["n"] == 3200
+
+
+def test_tts_rejects_text_over_4096_chars(tmp_path):
+    """上限 4096（与 OpenAI TTS 语义对齐）；400 + 明确原因。"""
+    app, _ = _app(tmp_path)
+    with TestClient(app) as c:
+        _inject(app, _tts_spy())
+        r = c.post(SPEECH, json={"model": "wenxin:tts", "input": "字" * 4096})
+        assert r.status_code == 200          # 恰好 4096 允许
+        r = c.post(SPEECH, json={"model": "wenxin:tts", "input": "字" * 4097})
+        assert r.status_code == 400
+        body = r.json()["error"]
+        assert body["code"] == "text_too_long"
+        assert "4096" in body["message"] and "4097" in body["message"]
