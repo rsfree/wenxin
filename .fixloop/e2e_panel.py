@@ -225,6 +225,21 @@ def run_flow(real: bool, mutation: bool) -> list[str]:
     require(vom, "尚未运行", "清空结果")
     done.append("R12 清空结果")
 
+    # ---- R14 用量页（R4 已经跑过一次干跑 ⇒ 必须有记录）----
+    vom = click_text(vom, "用量")
+    require(vom, "按模型", "用量页")
+    require(vom, "最近调用", "用量页")
+    require(vom, "clarity", "用量页")      # 最近调用表里应出现刚才那次
+    done.append("R14 用量页")
+
+    # ---- R15 一键干跑自检 ----
+    vom = click_text(vom, "能力")
+    must("click", find_ref(vom, "一键干跑"), what="一键干跑", timeout=120)
+    vom = wait_for(vom, "本部署可跑", where="自检结果", timeout=60)
+    require(vom, "预览可构造", "自检结果")
+    require(vom, "门禁", "自检结果")
+    done.append("R15 一键干跑自检")
+
     # ---- R6 日志页 ----
     vom = click_text(vom, "日志")
     require(vom, "BAIDU_", "日志页")

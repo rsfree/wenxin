@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import hmac
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated, Any
@@ -46,6 +47,7 @@ from .models import (
 from .observability import setup as setup_observability
 from .observability import spans
 from .service import run, validate_request
+from . import usage
 from .upstream.baidu import BaiduClient
 
 __all__ = ["create_app"]
@@ -309,18 +311,39 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if not isinstance(payload, dict):
             raise ApiError(400, "invalid_body", "请求体必须是 JSON 对象")
 
-        cap, image_value, mask_value, style_value, size, prompt, response_format, dry, unsupported = \
-            validate_request(payload)
-        dry_run = dry or _header_dry_run(request)
-
-        body = await run(
-            settings=s, client=_client(request), gate=_gate(request), risk=_risk(request),
-            cap=cap, image_value=image_value, mask_value=mask_value, style_value=style_value,
-            size=size,
-            prompt=prompt, response_format=response_format, dry_run=dry_run,
-            unsupported=unsupported,
-        )
-        return JSONResponse(status_code=200, content=body)
+        started = time.perf_counter()
+        error_code = ""
+        upstream_path = ""
+        title = ""
+        model_name = str(payload.get("model") or "")
+        try:
+            # 校验放进 try：**未知模型这类 400 也要进用量**，否则客户端调错能力在面板上完全隐形
+            (cap, image_value, mask_value, style_value, size, prompt,
+             response_format, dry, unsupported) = validate_request(payload)
+            title = cap.title
+            dry_run = dry or _header_dry_run(request)
+            body = await run(
+                settings=s, client=_client(request), gate=_gate(request), risk=_risk(request),
+                cap=cap, image_value=image_value, mask_value=mask_value, style_value=style_value,
+                size=size,
+                prompt=prompt, response_format=response_format, dry_run=dry_run,
+                unsupported=unsupported,
+            )
+            upstream_path = ((body.get("upstream") or {}).get("path")
+                             or ("dry-run" if body.get("dry_run") else ""))
+            return JSONResponse(status_code=200, content=body)
+        except UpstreamError as exc:
+            error_code = exc.kind
+            raise
+        except ApiError as exc:
+            error_code = exc.code
+            raise
+        finally:
+            # 面板的用量页靠这一条：**成功与失败都进账**，否则成功率是无源之水
+            usage.record(model=model_name or "unknown", title=title, ok=not error_code,
+                         ms=(time.perf_counter() - started) * 1000,
+                         dry=bool(payload.get("dry_run")), path=upstream_path,
+                         error=error_code)
 
     # ---------- 管理面板（运维面） ----------
     # 依赖用参数注入（而不是 admin 里 import require_api_key），避免 main ↔ admin 循环导入。

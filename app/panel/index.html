@@ -143,6 +143,7 @@ pre{font-family:var(--mono);font-size:12px;line-height:1.6;background:var(--surf
       <button data-v="overview" aria-current="page"><span class="ic">◱</span>总览</button>
       <button data-v="caps"><span class="ic">≡</span>能力</button>
       <button data-v="try"><span class="ic">▷</span>测试台</button>
+      <button data-v="usage"><span class="ic">∑</span>用量</button>
       <button data-v="logs"><span class="ic">⌁</span>日志</button>
       <button data-v="about"><span class="ic">i</span>关于</button>
     </nav>
@@ -159,7 +160,10 @@ pre{font-family:var(--mono);font-size:12px;line-height:1.6;background:var(--surf
     <section id="v-overview">
       <div class="head">
         <div><h1>总览</h1><p>实时读 <code>/healthz</code> 与 <code>/readyz</code> —— 与探针同源，不另造数据</p></div>
-        <div class="actions"><button class="btn" id="refresh-overview">刷新</button></div>
+        <div class="actions">
+          <button class="btn" id="mint-btn">铸造新身份</button>
+          <button class="btn" id="refresh-overview">刷新</button>
+        </div>
       </div>
       <div class="grid g3" style="margin-bottom:14px">
         <div class="card"><h2>就绪</h2><div class="body">
@@ -173,7 +177,8 @@ pre{font-family:var(--mono);font-size:12px;line-height:1.6;background:var(--surf
           <div class="hint" id="o-risk-hint"></div></div></div>
       </div>
       <div class="grid g2">
-        <div class="card"><h2>上游与凭据</h2><div class="body" id="o-upstream"></div></div>
+        <div class="card"><h2>上游与凭据</h2><div class="body" id="o-upstream"></div>
+          <div class="body" id="mint-result" style="padding-top:0"></div></div>
         <div class="card"><h2>闸门与通路</h2><div class="body" id="o-gate"></div></div>
       </div>
     </section>
@@ -182,13 +187,19 @@ pre{font-family:var(--mono);font-size:12px;line-height:1.6;background:var(--surf
     <section id="v-caps" hidden>
       <div class="head">
         <div><h1>能力</h1><p>来自 <code>/capabilities</code>：注册表是唯一真相，未取证项单独列出原因</p></div>
-        <div class="actions"><button class="btn" id="refresh-caps">刷新</button></div>
+        <div class="actions">
+          <button class="btn primary" id="dryrun-btn">一键干跑（零上游）</button>
+          <button class="btn" id="refresh-caps">刷新</button>
+        </div>
       </div>
       <div class="card"><div class="body" style="padding-top:4px"><table>
         <thead><tr><th>模型</th><th>能力</th><th>可用</th><th>通路</th><th>必填</th><th style="width:38%">取证</th></tr></thead>
         <tbody id="caps-body"></tbody>
       </table></div></div>
       <div class="card" style="margin-top:14px"><h2>不可用 / 刻意不注册</h2><div class="body" id="caps-off"></div></div>
+      <div class="card" id="dryrun-card" style="margin-top:14px" hidden>
+        <h2>一键干跑自检</h2><div class="body" id="dryrun-box"></div>
+      </div>
     </section>
 
     <!-- ── 测试台 ─────────────────────────────────────────── -->
@@ -238,6 +249,32 @@ pre{font-family:var(--mono);font-size:12px;line-height:1.6;background:var(--surf
     </section>
 
     <!-- ── 日志 ───────────────────────────────────────────── -->
+    <section id="v-usage" hidden>
+      <div class="head">
+        <div><h1>用量</h1><p>进程内计数（单 worker 假设）；<b>干跑不计入 p50</b>，失败也进账</p></div>
+        <div class="actions">
+          <label class="hint" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="usage-auto" checked> 自动刷新</label>
+          <button class="btn" id="refresh-usage">刷新</button>
+        </div>
+      </div>
+      <div class="grid g3" style="margin-bottom:14px">
+        <div class="card"><h2>调用总数</h2><div class="body">
+          <div class="big" id="u-calls">—</div><div class="hint" id="u-models"></div></div></div>
+        <div class="card"><h2>成功率</h2><div class="body">
+          <div class="big" id="u-rate">—</div><div class="hint" id="u-fail"></div></div></div>
+        <div class="card"><h2>p50 延迟</h2><div class="body">
+          <div class="big" id="u-p50">—</div><div class="hint">仅真实调用</div></div></div>
+      </div>
+      <div class="card"><h2>按模型</h2><div class="body"><table>
+        <thead><tr><th>模型</th><th>调用</th><th>成功</th><th>失败</th><th>干跑</th><th>成功率</th><th>p50</th><th>主要错误</th></tr></thead>
+        <tbody id="u-models-body"><tr><td colspan="8" class="hint">暂无调用</td></tr></tbody>
+      </table></div></div>
+      <div class="card" style="margin-top:14px"><h2>最近调用</h2><div class="body"><table>
+        <thead><tr><th>时间</th><th>模型</th><th>结果</th><th>通路</th><th>耗时</th></tr></thead>
+        <tbody id="u-recent"><tr><td colspan="5" class="hint">暂无调用</td></tr></tbody>
+      </table></div></div>
+    </section>
+
     <section id="v-logs" hidden>
       <div class="head">
         <div><h1>日志</h1><p>进程内环形缓冲（最多 2000 条），需 Key；单 worker 假设不变</p></div>
@@ -322,7 +359,7 @@ function tag(text, kind) { return `<span class="tag ${kind}">${text}</span>`; }
 function plain(s) { return String(s || '').replace(/\*\*/g, '').replace(/`/g, '').replace(/\s+/g, ' ').trim(); }
 
 /* ── 导航 ───────────────────────────────────────────────── */
-const VIEWS = ['overview', 'caps', 'try', 'logs', 'about'];
+const VIEWS = ['overview', 'caps', 'try', 'usage', 'logs', 'about'];
 function showView(v, push = true) {
   if (!VIEWS.includes(v)) v = 'overview';
   $$('#nav button').forEach(b => {
@@ -332,6 +369,7 @@ function showView(v, push = true) {
   if (push && location.hash !== '#' + v) location.hash = v;
   if (v === 'caps') loadCaps();
   if (v === 'logs') loadLogs();
+  if (v === 'usage') loadUsage();
   if (v === 'about') loadAbout();
 }
 $('#nav').addEventListener('click', e => {
@@ -540,6 +578,95 @@ $('#t-run').onclick = async () => {
     $('#t-state').textContent = '出错';
     toast(e.message, true);
   } finally { btn.disabled = false; }
+};
+
+/* ── 用量 ───────────────────────────────────────────────── */
+async function loadUsage() {
+  try {
+    const { data } = await api('/panel/api/usage?n=50');
+    const sum = data.summary || {};
+    $('#u-calls').textContent = fmt(sum.calls);
+    $('#u-models').textContent = `${fmt(sum.models_seen)} 个模型有调用`;
+    const rate = sum.ok_rate === null || sum.ok_rate === undefined ? null : sum.ok_rate;
+    $('#u-rate').textContent = rate === null ? '—' : (rate * 100).toFixed(1) + '%';
+    $('#u-rate').style.color = rate === null ? '' : (rate >= 0.99 ? 'var(--ok)' : rate >= 0.9 ? 'var(--warn)' : 'var(--bad)');
+    $('#u-fail').textContent = `失败 ${fmt(sum.failed)} 次`;
+    $('#u-p50').textContent = sum.p50_ms === null || sum.p50_ms === undefined ? '—' : sum.p50_ms + 'ms';
+
+    const models = data.models || [];
+    $('#u-models-body').innerHTML = models.length ? models.map(m => `<tr>
+      <td class="mono">${m.model.replace('wenxin:', '')}</td>
+      <td class="mono">${m.calls}</td><td class="mono">${m.ok}</td>
+      <td class="mono">${m.failed ? `<span style="color:var(--bad)">${m.failed}</span>` : 0}</td>
+      <td class="mono">${m.dry || 0}</td>
+      <td class="mono">${m.ok_rate === null ? '—' : (m.ok_rate * 100).toFixed(1) + '%'}</td>
+      <td class="mono">${m.p50_ms === null ? '—' : m.p50_ms + 'ms'}</td>
+      <td class="hint">${Object.entries(m.errors || {}).map(([k, v]) => k + '×' + v).join(', ') || '—'}</td>
+    </tr>`).join('') : '<tr><td colspan="8" class="hint">暂无调用</td></tr>';
+
+    const recent = data.recent || [];
+    $('#u-recent').innerHTML = recent.length ? recent.map(r => `<tr>
+      <td class="mono">${r.t}</td>
+      <td class="mono">${r.model.replace('wenxin:', '')}</td>
+      <td>${r.ok ? tag('成功', 'ok') : tag(r.error || '失败', 'bad')}${r.dry ? ' ' + tag('干跑', 'mute') : ''}</td>
+      <td class="mono">${r.path || '—'}</td>
+      <td class="mono">${r.ms}ms</td>
+    </tr>`).join('') : '<tr><td colspan="5" class="hint">暂无调用</td></tr>';
+  } catch (e) { toast('用量加载失败：' + e.message, true); }
+}
+$('#refresh-usage').onclick = loadUsage;
+setInterval(() => { if (!$('#v-usage').hidden && $('#usage-auto').checked) loadUsage(); }, 5000);
+
+/* ── 一键干跑（零上游自检） ─────────────────────────────── */
+$('#dryrun-btn').onclick = async () => {
+  const btn = $('#dryrun-btn');
+  btn.disabled = true; btn.textContent = '干跑中…';
+  try {
+    const { ok, status, data } = await api('/panel/api/dryrun-all', { method: 'POST' });
+    if (!ok) { toast('自检失败：' + (data.error || {}).message, true); return; }
+    $('#dryrun-card').hidden = false;
+    const rows = data.rows || [];
+    $('#dryrun-box').innerHTML =
+      `<div class="hint" style="margin-bottom:8px">共 ${data.total} 项：` +
+      `<b style="color:var(--ok)">${data.available} 本部署可跑</b> · ` +
+      `<b style="color:var(--ink-3)">${data.gated} 门禁/未取证</b> · ` +
+      `<b style="color:var(--bad)">${data.failed} 预览异常</b>` +
+      `<br>预览可构造 ${data.preview_ok}/${data.total}（干跑按设计穿透门禁，只验报文）</div>
+      <table><thead><tr><th>模型</th><th>可用性</th><th>出站</th><th>耗时</th><th>说明</th></tr></thead><tbody>` +
+      rows.map(r => `<tr>
+        <td class="mono">${r.model.replace('wenxin:', '')}</td>
+        <td>${r.available ? tag('可用', 'ok') : tag('门禁', 'mute')}${r.ok ? '' : ' ' + tag('预览异常', 'bad')}</td>
+        <td class="mono hint">${r.ok ? (r.legacy ? 'legacy' : (r.target || '').replace('https://', '')) : '—'}</td>
+        <td class="mono">${r.ms}ms</td>
+        <td class="hint">${r.available ? '' : (r.gated_reason || r.reason || '')}</td>
+      </tr>`).join('') + '</tbody></table>';
+    toast(`自检完成：${data.available}/${data.total} 可用`);
+  } catch (e) {
+    toast('自检出错：' + e.message, true);
+  } finally { btn.disabled = false; btn.textContent = '一键干跑（零上游）'; }
+};
+
+/* ── 铸造新身份 ─────────────────────────────────────────── */
+$('#mint-btn').onclick = async () => {
+  const btn = $('#mint-btn');
+  btn.disabled = true; btn.textContent = '铸造中…';
+  try {
+    const { ok, data } = await api('/panel/api/mint', { method: 'POST' });
+    if (ok) {
+      $('#mint-result').innerHTML =
+        `<div class="li" style="margin-top:8px"><span class="b">${tag('已铸造', 'ok')}</span>
+         <span class="hint">${data.fields.join(' / ')} · ${data.elapsed_s}s · ${data.minted_at}<br>
+         ${data.note}</span></div>`;
+      toast('新身份已在本进程生效');
+      loadOverview();
+    } else {
+      $('#mint-result').innerHTML =
+        `<div class="li" style="margin-top:8px"><span class="b">${tag('失败', 'bad')}</span>
+         <span class="hint">${(data.error || {}).message || ''}</span></div>`;
+    }
+  } catch (e) {
+    toast('铸造出错：' + e.message, true);
+  } finally { btn.disabled = false; btn.textContent = '铸造新身份'; }
 };
 
 /* ── 日志 ───────────────────────────────────────────────── */

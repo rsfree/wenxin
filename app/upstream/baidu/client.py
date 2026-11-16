@@ -172,6 +172,16 @@ class Credentials:
             self.fetches += 1
             return token, lid
 
+    def reset(self) -> None:
+        """丢掉现取的 token/lid 缓存。
+
+        面板换 cookie 后必须调它：旧 token 与新身份不配对，继续用会稳定吃 tokenFail
+        （而报错文案只说「出了点小问题」，极易误判成风控）。
+        """
+        self._token = ""
+        self._lid = ""
+        self._at = 0.0
+
     def diagnostics(self) -> dict[str, Any]:
         tok, _ = self.cached()
         return {
