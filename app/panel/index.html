@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>wenxin-service · 控制台</title>
+<style>
+/* ── 设计令牌（明暗两套，参照 workbuddy2api 面板的仪表盘语言）────────────
+   冷石墨基调 + 单一靛蓝强调（只用于交互），语义色只给状态；观测值一律等宽 tabular。 */
+:root{
+  --bg:#f4f5f8; --surface:#fff; --surface-2:#f8f9fb; --raise:#fff;
+  --line:#e2e5ec; --line-soft:#eceef3;
+  --ink:#14171f; --ink-2:#545c6e; --ink-3:#666e7f;
+  --accent:#3d5fe0; --accent-solid:#3d5fe0; --accent-ink:#fff; --accent-soft:rgba(61,95,224,.09);
+  --ok:#0a7a4c; --ok-soft:rgba(10,122,76,.1);
+  --warn:#b47611; --warn-soft:rgba(180,118,17,.11);
+  --bad:#cf3b34; --bad-soft:rgba(207,59,52,.09);
+  --shadow:0 1px 2px rgba(16,20,32,.06),0 8px 24px -14px rgba(16,20,32,.14);
+  --mono:ui-monospace,"SF Mono","Cascadia Mono",Consolas,monospace;
+  --sans:system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+}
+[data-theme="dark"]{
+  --bg:#0c0e14; --surface:#14171f; --surface-2:#1a1e28; --raise:#202531;
+  --line:#262c3a; --line-soft:#1e232e;
+  --ink:#e8ebf2; --ink-2:#a8b0c2; --ink-3:#7c8599;
+  --accent:#5b7cfa; --accent-solid:#4a6ae8; --accent-ink:#fff; --accent-soft:rgba(91,124,250,.13);
+  --ok:#3ddc97; --ok-soft:rgba(61,220,151,.12);
+  --warn:#f5b544; --warn-soft:rgba(245,181,68,.12);
+  --bad:#f0655f; --bad-soft:rgba(240,101,95,.12);
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px -12px rgba(0,0,0,.5);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{background:var(--bg);color:var(--ink);font:14px/1.55 var(--sans);-webkit-font-smoothing:antialiased}
+::selection{background:var(--accent-soft)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+code,.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+/* ── 壳层 ───────────────────────────────────────────────────────── */
+.shell{display:grid;grid-template-columns:212px 1fr;min-height:100vh}
+.side{background:var(--surface);border-right:1px solid var(--line);padding:18px 14px;display:flex;flex-direction:column;gap:22px;position:sticky;top:0;height:100vh}
+.brand{display:flex;align-items:center;gap:9px;padding:0 6px}
+.brand .dot{width:10px;height:10px;border-radius:3px;background:linear-gradient(135deg,var(--accent),#22d3ee)}
+.brand b{font-size:14px;letter-spacing:.2px}
+.brand small{display:block;color:var(--ink-3);font-size:11px;font-weight:400}
+.nav{display:flex;flex-direction:column;gap:2px}
+.nav button{all:unset;cursor:pointer;display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:8px;color:var(--ink-2);font-size:13.5px}
+.nav button:hover{background:var(--surface-2);color:var(--ink)}
+.nav button[aria-current="page"]{background:var(--accent-soft);color:var(--accent);font-weight:600}
+.nav .ic{width:16px;text-align:center;font-family:var(--mono);font-size:12px;opacity:.9}
+.side-foot{margin-top:auto;display:flex;flex-direction:column;gap:8px;font-size:11.5px;color:var(--ink-3)}
+.side-foot .row{display:flex;justify-content:space-between;gap:8px}
+.side-foot .row span:last-child{font-family:var(--mono)}
+
+.main{padding:22px 26px 40px;max-width:1180px}
+.head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:18px;flex-wrap:wrap}
+.head h1{font-size:19px;letter-spacing:.2px}
+.head p{color:var(--ink-3);font-size:12.5px;margin-top:3px}
+.head .actions{display:flex;gap:8px;align-items:center}
+
+/* ── 组件 ───────────────────────────────────────────────────────── */
+.btn{all:unset;cursor:pointer;border:1px solid var(--line);background:var(--surface);color:var(--ink);
+  padding:7px 12px;border-radius:8px;font-size:13px;box-shadow:var(--shadow);transition:.15s}
+.btn:hover{border-color:var(--accent);color:var(--accent)}
+.btn.primary{background:var(--accent-solid);border-color:transparent;color:var(--accent-ink)}
+.btn.primary:hover{filter:brightness(1.06);color:var(--accent-ink)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn.sm{padding:4px 9px;font-size:12px}
+
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow)}
+.card h2{font-size:12px;text-transform:uppercase;letter-spacing:.7px;color:var(--ink-3);padding:13px 16px 0}
+.card .body{padding:12px 16px 16px}
+.grid{display:grid;gap:14px}
+.g3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.g2{grid-template-columns:repeat(2,minmax(0,1fr))}
+@media(max-width:900px){.g3,.g2{grid-template-columns:1fr}}
+
+.kv{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px dashed var(--line-soft);font-size:13px}
+.kv:last-child{border-bottom:0}
+.kv .k{color:var(--ink-3)}
+.kv .v{font-family:var(--mono);font-variant-numeric:tabular-nums;text-align:right;word-break:break-all}
+
+.big{font-family:var(--mono);font-size:26px;font-variant-numeric:tabular-nums;letter-spacing:-.5px}
+.tag{display:inline-block;padding:1px 7px;border-radius:999px;font-size:11.5px;font-family:var(--mono);border:1px solid transparent}
+.tag.ok{color:var(--ok);background:var(--ok-soft)}
+.tag.warn{color:var(--warn);background:var(--warn-soft)}
+.tag.bad{color:var(--bad);background:var(--bad-soft)}
+.tag.mute{color:var(--ink-3);background:var(--surface-2);border-color:var(--line)}
+
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;font-size:11.5px;letter-spacing:.4px;text-transform:uppercase;color:var(--ink-3);font-weight:600;padding:9px 10px;border-bottom:1px solid var(--line)}
+td{padding:9px 10px;border-bottom:1px solid var(--line-soft);vertical-align:top}
+tbody tr:hover{background:var(--surface-2)}
+td.mono,.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+.field{display:flex;flex-direction:column;gap:5px;margin-bottom:12px}
+.field label{font-size:12px;color:var(--ink-3)}
+.field input[type=text],.field input[type=number],.field select,.field textarea{
+  font:inherit;font-size:13px;color:var(--ink);background:var(--surface-2);
+  border:1px solid var(--line);border-radius:8px;padding:8px 10px;width:100%}
+.field textarea{min-height:64px;resize:vertical;font-family:var(--mono);font-size:12.5px}
+.hint{font-size:11.5px;color:var(--ink-3)}
+
+.drop{border:1.5px dashed var(--line);border-radius:10px;padding:16px;text-align:center;color:var(--ink-3);font-size:12.5px;background:var(--surface-2);cursor:pointer}
+.drop.over{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+.thumb{max-width:100%;max-height:260px;border-radius:8px;border:1px solid var(--line);background:
+  repeating-conic-gradient(#0000 0 25%,rgba(128,128,128,.12) 0 50%) 0 0/16px 16px}
+
+pre{font-family:var(--mono);font-size:12px;line-height:1.6;background:var(--surface-2);border:1px solid var(--line);
+  border-radius:8px;padding:10px 12px;overflow:auto;max-height:280px;white-space:pre-wrap;word-break:break-word}
+.ul{display:flex;flex-direction:column;gap:7px}
+.li{display:flex;gap:9px;align-items:flex-start;font-size:12.5px}
+.li .b{flex:0 0 auto;margin-top:2px}
+
+.logs{font-family:var(--mono);font-size:12px;line-height:1.75;max-height:min(64vh,640px);overflow:auto}
+.logs .l{display:grid;grid-template-columns:62px 54px 1fr;gap:10px;padding:1px 0}
+.logs .t{color:var(--ink-3)}
+.logs .lv{font-weight:600}
+.logs .lv.INFO{color:var(--ok)} .logs .lv.WARNING{color:var(--warn)} .logs .lv.ERROR,.logs .lv.CRITICAL{color:var(--bad)}
+.logs .m{white-space:pre-wrap;word-break:break-word}
+
+.dialog{position:fixed;inset:0;background:rgba(10,12,18,.45);display:grid;place-items:center;z-index:50;backdrop-filter:blur(2px)}
+.dialog .box{background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:20px;width:min(420px,92vw)}
+.dialog h3{font-size:15px;margin-bottom:6px}
+.dialog p{font-size:12.5px;color:var(--ink-3);margin-bottom:12px}
+.toast{position:fixed;right:20px;bottom:20px;background:var(--raise);border:1px solid var(--line);box-shadow:var(--shadow);
+  border-radius:10px;padding:10px 14px;font-size:13px;z-index:60;max-width:min(420px,90vw)}
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="side">
+    <div class="brand">
+      <div class="dot"></div>
+      <div><b>wenxin-service</b><small>文心图片编辑出口</small></div>
+    </div>
+    <nav class="nav" id="nav">
+      <button data-v="overview" aria-current="page"><span class="ic">◱</span>总览</button>
+      <button data-v="caps"><span class="ic">≡</span>能力</button>
+      <button data-v="try"><span class="ic">▷</span>测试台</button>
+      <button data-v="logs"><span class="ic">⌁</span>日志</button>
+      <button data-v="about"><span class="ic">i</span>关于</button>
+    </nav>
+    <div class="side-foot">
+      <div class="row"><span>版本</span><span id="f-ver">—</span></div>
+      <div class="row"><span>状态</span><span id="f-status">—</span></div>
+      <div class="row"><span>能力</span><span id="f-caps">—</span></div>
+      <button class="btn sm" id="theme">切换主题</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <!-- ── 总览 ───────────────────────────────────────────── -->
+    <section id="v-overview">
+      <div class="head">
+        <div><h1>总览</h1><p>实时读 <code>/healthz</code> 与 <code>/readyz</code> —— 与探针同源，不另造数据</p></div>
+        <div class="actions"><button class="btn" id="refresh-overview">刷新</button></div>
+      </div>
+      <div class="grid g3" style="margin-bottom:14px">
+        <div class="card"><h2>就绪</h2><div class="body">
+          <div class="big" id="o-status">—</div>
+          <div class="hint" id="o-degraded"></div></div></div>
+        <div class="card"><h2>能力面</h2><div class="body">
+          <div class="big" id="o-caps">—</div>
+          <div class="hint">可用 / 注册总数</div></div></div>
+        <div class="card"><h2>风险窗</h2><div class="body">
+          <div class="big" id="o-risk">—</div>
+          <div class="hint" id="o-risk-hint"></div></div></div>
+      </div>
+      <div class="grid g2">
+        <div class="card"><h2>上游与凭据</h2><div class="body" id="o-upstream"></div></div>
+        <div class="card"><h2>闸门与通路</h2><div class="body" id="o-gate"></div></div>
+      </div>
+    </section>
+
+    <!-- ── 能力 ───────────────────────────────────────────── -->
+    <section id="v-caps" hidden>
+      <div class="head">
+        <div><h1>能力</h1><p>来自 <code>/capabilities</code>：注册表是唯一真相，未取证项单独列出原因</p></div>
+        <div class="actions"><button class="btn" id="refresh-caps">刷新</button></div>
+      </div>
+      <div class="card"><div class="body" style="padding-top:4px"><table>
+        <thead><tr><th>模型</th><th>能力</th><th>可用</th><th>通路</th><th>必填</th><th style="width:38%">取证</th></tr></thead>
+        <tbody id="caps-body"></tbody>
+      </table></div></div>
+      <div class="card" style="margin-top:14px"><h2>不可用 / 刻意不注册</h2><div class="body" id="caps-off"></div></div>
+    </section>
+
+    <!-- ── 测试台 ─────────────────────────────────────────── -->
+    <section id="v-try" hidden>
+      <div class="head">
+        <div><h1>测试台</h1><p>直接打 <code>POST /v1/images/generations</code> —— 与线上同一条链路，勾「干跑」则零上游</p></div>
+      </div>
+      <div class="grid g2">
+        <div class="card"><h2>请求</h2><div class="body">
+          <div class="field"><label>图片（必填）</label>
+            <div class="drop" id="drop-img">点击或拖入图片 → 转 data URI</div>
+            <input type="file" id="file-img" accept="image/*" hidden>
+            <img class="thumb" id="prev-img" hidden alt="预览">
+          </div>
+          <div class="field"><label>模型</label><select id="t-model"></select>
+            <div class="hint" id="t-model-hint"></div></div>
+          <div class="grid g2" style="gap:10px">
+            <div class="field" id="f-mask" hidden><label>遮罩（黑底白框，白=要处理）</label>
+              <div class="drop" id="drop-mask">点击或拖入遮罩</div>
+              <input type="file" id="file-mask" accept="image/*" hidden>
+            </div>
+            <div class="field" id="f-style" hidden><label>风格</label><select id="t-style"></select></div>
+          </div>
+          <div class="grid g2" style="gap:10px">
+            <div class="field" id="f-size" hidden><label>比例（扩图专用）</label>
+              <input type="text" id="t-size" placeholder="4:3 / 16:9" value="16:9"></div>
+            <div class="field"><label>prompt（仅局部替换等消费）</label>
+              <input type="text" id="t-prompt" placeholder="留空即不传"></div>
+          </div>
+          <label class="li" style="cursor:pointer"><input type="checkbox" id="t-dry"> 干跑（只出预览计划，零上游请求）</label>
+          <div style="display:flex;gap:8px;margin-top:14px">
+            <button class="btn primary" id="t-run">运行</button>
+            <button class="btn" id="t-clear">清空结果</button>
+            <span class="hint" id="t-state" style="align-self:center"></span>
+          </div>
+        </div></div>
+        <div class="card"><h2>结果</h2><div class="body">
+          <div id="t-result"><div class="hint">尚未运行</div></div>
+        </div></div>
+      </div>
+    </section>
+
+    <!-- ── 日志 ───────────────────────────────────────────── -->
+    <section id="v-logs" hidden>
+      <div class="head">
+        <div><h1>日志</h1><p>进程内环形缓冲（最多 2000 条），需 Key；单 worker 假设不变</p></div>
+        <div class="actions">
+          <label class="hint" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="log-auto" checked> 自动刷新</label>
+          <button class="btn" id="refresh-logs">刷新</button>
+        </div>
+      </div>
+      <div class="card"><div class="body"><div class="logs" id="log-box"></div></div></div>
+    </section>
+
+    <!-- ── 关于 ───────────────────────────────────────────── -->
+    <section id="v-about" hidden>
+      <div class="head"><div><h1>关于</h1><p>端点与关键旋钮（**只读**：改配置请改 <code>.env</code> 后重启，避免“假配置”）</p></div></div>
+      <div class="grid g2">
+        <div class="card"><h2>端点</h2><div class="body" id="a-endpoints"></div></div>
+        <div class="card"><h2>运行参数（只读）</h2><div class="body" id="a-settings"></div></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div class="dialog" id="keydlg" hidden>
+  <div class="box">
+    <h3>需要 API Key</h3>
+    <p>此部署启用了 <code>BAIDU_API_KEYS</code>。密钥只存在本机浏览器，仅发给本服务。</p>
+    <div class="field"><label>Bearer 密钥</label><input type="text" id="key-input" placeholder="sk-…"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn" id="key-cancel">取消</button>
+      <button class="btn primary" id="key-save">保存并使用</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const KEY_STORE = 'wenxin_panel_key';
+let CAPS = { models: [], not_available: [] };
+let MODEL_INDEX = {};
+
+/* ── 基础设施 ───────────────────────────────────────────── */
+function getKey() { return localStorage.getItem(KEY_STORE) || ''; }
+function setKey(k) { k ? localStorage.setItem(KEY_STORE, k) : localStorage.removeItem(KEY_STORE); }
+
+function askKey() {
+  $('#keydlg').hidden = false;
+  $('#key-input').value = getKey();
+  $('#key-input').focus();
+}
+$('#key-save').onclick = () => { setKey($('#key-input').value.trim()); $('#keydlg').hidden = true; loadAll(); };
+$('#key-cancel').onclick = () => { $('#keydlg').hidden = true; };
+$('#key-input').addEventListener('keydown', e => { if (e.key === 'Enter') $('#key-save').click(); });
+
+async function api(path, opts = {}) {
+  const headers = Object.assign({}, opts.headers || {});
+  const k = getKey();
+  if (k) headers['authorization'] = 'Bearer ' + k;
+  if (opts.body) headers['content-type'] = 'application/json';
+  const r = await fetch(path, { ...opts, headers });
+  if (r.status === 401) { askKey(); throw new Error('unauthorized'); }
+  const text = await r.text();
+  let data; try { data = JSON.parse(text); } catch { data = { raw: text }; }
+  return { ok: r.ok, status: r.status, data };
+}
+
+function toast(msg, bad) {
+  const el = document.createElement('div');
+  el.className = 'toast'; el.textContent = msg;
+  if (bad) el.style.borderColor = 'var(--bad)';
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 3200);
+}
+
+const fmt = (v) => v === null || v === undefined ? '—' : String(v);
+function kv(parent, rows) {
+  parent.innerHTML = rows.map(([k, v, cls]) =>
+    `<div class="kv"><span class="k">${k}</span><span class="v ${cls || ''}">${fmt(v)}</span></div>`).join('');
+}
+function tag(text, kind) { return `<span class="tag ${kind}">${text}</span>`; }
+/* 注册表的 evidence/notes 是 markdown（给人和 LLM 读的），表格里只留纯文本 */
+function plain(s) { return String(s || '').replace(/\*\*/g, '').replace(/`/g, '').replace(/\s+/g, ' ').trim(); }
+
+/* ── 导航 ───────────────────────────────────────────────── */
+const VIEWS = ['overview', 'caps', 'try', 'logs', 'about'];
+function showView(v, push = true) {
+  if (!VIEWS.includes(v)) v = 'overview';
+  $$('#nav button').forEach(b => {
+    if (b.dataset.v === v) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
+  });
+  $$('main > section').forEach(s => s.hidden = s.id !== 'v-' + v);
+  if (push && location.hash !== '#' + v) location.hash = v;
+  if (v === 'caps') loadCaps();
+  if (v === 'logs') loadLogs();
+  if (v === 'about') loadAbout();
+}
+$('#nav').addEventListener('click', e => {
+  const b = e.target.closest('button[data-v]'); if (b) showView(b.dataset.v);
+});
+// 地址栏 / 前进后退也要能切换 —— 少了这条，分享 #caps 链接会停在总览。
+window.addEventListener('hashchange', () => showView(location.hash.slice(1), false));
+
+/* ── 主题 ───────────────────────────────────────────────── */
+const THEME = 'wenxin_panel_theme';
+function applyTheme(t) { document.documentElement.dataset.theme = t; localStorage.setItem(THEME, t); }
+$('#theme').onclick = () => applyTheme(document.documentElement.dataset.theme === 'light' ? 'dark' : 'light');
+applyTheme(localStorage.getItem(THEME) || 'light');
+
+/* ── 总览 ───────────────────────────────────────────────── */
+async function loadOverview() {
+  try {
+    const [h, r] = await Promise.all([api('/healthz'), api('/readyz')]);
+    const c = (r.data.checks) || {};
+    const status = r.data.status || '—';
+    $('#f-ver').textContent = h.data.version || '—';
+    $('#f-status').textContent = status;
+    $('#f-caps').textContent = c.capabilities ? `${c.capabilities.available}/${c.capabilities.total}` : '—';
+
+    const st = $('#o-status');
+    st.textContent = status.toUpperCase();
+    st.style.color = status === 'ok' ? 'var(--ok)' : 'var(--warn)';
+    $('#o-degraded').textContent = status === 'ok' ? '全部检查通过' : '存在降级项（见下方）';
+
+    if (c.capabilities) $('#o-caps').textContent = `${c.capabilities.available} / ${c.capabilities.total}`;
+    const rw = c.risk_window || {};
+    $('#o-risk').textContent = rw.cooling ? `冷却中 ${Math.ceil(rw.remaining_s || 0)}s` : '正常';
+    $('#o-risk').style.color = rw.cooling ? 'var(--bad)' : 'var(--ok)';
+    $('#o-risk-hint').textContent = `冷却窗 ${fmt(rw.cooldown_s)}s · 命中后零上游请求`;
+
+    const cred = c.credentials || {};
+    kv($('#o-upstream'), [
+      ['上游', c.upstream_endpoint],
+      ['cookie 已配', c.cookie_configured ? '是' : '否（所有调用 503）'],
+      ['凭据来源', ({'not-yet-fetched': '尚未现取', fetched: '已从首页现取',
+                    explicit: '显式配置（钉值）'})[cred.source] || cred.source],
+      ['凭据获取次数', cred.fetches],
+      ['凭据 TTL', fmt(cred.ttl_s) + 's'],
+      ['输入图送法', c.upload_mode],
+      ['出口池', (c.proxy_pool || []).length ? (c.proxy_pool || []).join(', ') : '直连'],
+    ]);
+
+    const g = c.rate_gate || {};
+    kv($('#o-gate'), [
+      ['鉴权', c.api_keys_enabled ? '已启用' : '关闭（仅内网）'],
+      ['最小间隔', fmt(g.min_interval_s) + 's'],
+      ['每分钟上限', fmt(g.per_minute)],
+      ['老接口兜底', (c.legacy || {}).mode],
+      ['结果取回', `${fmt((c.result_fetch || {}).timeout_s)}s × ${fmt((c.result_fetch || {}).retries)} 次重试`],
+      ['产物目录', c.media_dir],
+    ]);
+  } catch (e) { toast('总览加载失败：' + e.message, true); }
+}
+$('#refresh-overview').onclick = loadOverview;
+
+/* ── 能力 ───────────────────────────────────────────────── */
+async function loadCaps() {
+  try {
+    const { data } = await api('/capabilities');
+    CAPS = { models: data.models || [], not_available: data.not_available || [] };
+    MODEL_INDEX = {};
+    [...CAPS.models, ...CAPS.not_available].forEach(m => { MODEL_INDEX[m.id] = m; });
+
+    $('#caps-body').innerHTML = CAPS.models.map(m => {
+      const need = [];
+      if (m.requires_mask) need.push('mask');
+      if (m.needs_style) need.push('style');
+      if (m.supports_ratio) need.push('size');
+      const via = m.legacy_only ? 'legacy-only' : `toolType ${m.tool_type}`;
+      const leg = m.legacy_type ? ` · legacy ${m.legacy_type}` : '';
+      return `<tr>
+        <td class="mono">${m.id.replace('wenxin:', '')}</td>
+        <td>${m.title}</td>
+        <td>${tag('可用', 'ok')}</td>
+        <td class="mono">${via}${leg}</td>
+        <td class="mono">${need.length ? need.join(', ') : '—'}</td>
+        <td class="hint">${plain(m.evidence).slice(0, 160)}${plain(m.evidence).length > 160 ? '…' : ''}</td>
+      </tr>`;
+    }).join('');
+
+    $('#caps-off').innerHTML = CAPS.not_available.length
+      ? `<div class="ul">${CAPS.not_available.map(m =>
+          `<div class="li"><span class="b">${tag('不可用', 'mute')}</span>
+           <span><b>${m.id.replace('wenxin:', '')}</b>（${m.title}）<br>
+           <span class="hint">${m.reason || ''}</span></span></div>`).join('')}</div>`
+      : '<div class="hint">全部注册能力在当前部署均可用。</div>';
+
+    fillModelSelect();
+  } catch (e) { toast('能力加载失败：' + e.message, true); }
+}
+$('#refresh-caps').onclick = loadCaps;
+
+/* ── 测试台 ─────────────────────────────────────────────── */
+let IMG_URI = '', MASK_URI = '';
+
+function readFile(file, cb) {
+  const fr = new FileReader();
+  fr.onload = () => cb(fr.result);
+  fr.readAsDataURL(file);
+}
+
+function wireDrop(zoneSel, inputSel, onData) {
+  const zone = $(zoneSel), input = $(inputSel);
+  zone.onclick = () => input.click();
+  input.onchange = () => input.files[0] && readFile(input.files[0], onData);
+  ['dragenter', 'dragover'].forEach(ev => zone.addEventListener(ev, e => { e.preventDefault(); zone.classList.add('over'); }));
+  ['dragleave', 'drop'].forEach(ev => zone.addEventListener(ev, e => { e.preventDefault(); zone.classList.remove('over'); }));
+  zone.addEventListener('drop', e => { const f = e.dataTransfer.files[0]; if (f) readFile(f, onData); });
+}
+
+wireDrop('#drop-img', '#file-img', uri => {
+  IMG_URI = uri;
+  const im = $('#prev-img'); im.src = uri; im.hidden = false;
+  $('#drop-img').textContent = '已载入（点击可换）';
+});
+wireDrop('#drop-mask', '#file-mask', uri => {
+  MASK_URI = uri; $('#drop-mask').textContent = '已载入遮罩（点击可换）';
+});
+
+function fillModelSelect() {
+  const sel = $('#t-model');
+  const prev = sel.value;
+  sel.innerHTML = CAPS.models.map(m => `<option value="${m.id}">${m.id.replace('wenxin:', '')} · ${m.title}</option>`).join('');
+  const preferred = 'wenxin:clarity';           // 旗舰能力，作为默认项
+  if (prev && CAPS.models.some(m => m.id === prev)) sel.value = prev;
+  else if (CAPS.models.some(m => m.id === preferred)) sel.value = preferred;
+  syncModelFields();
+}
+
+function syncModelFields() {
+  const m = MODEL_INDEX[$('#t-model').value];
+  $('#f-mask').hidden = !(m && m.requires_mask);
+  $('#f-style').hidden = !(m && m.needs_style);
+  $('#f-size').hidden = !(m && m.supports_ratio);
+  if (m && m.needs_style) {
+    $('#t-style').innerHTML = (m.styles || []).map(s => `<option value="${s.id}">${s.label}</option>`).join('');
+  }
+  $('#t-model-hint').textContent = m ? (m.legacy_only ? 'legacy-only：必须 BAIDU_LEGACY≠off' : (m.entry_type ? '工具入口形状' : 'workspace 形状')) : '';
+}
+$('#t-model').onchange = syncModelFields;
+
+$('#t-clear').onclick = () => { $('#t-result').innerHTML = '<div class="hint">尚未运行</div>'; $('#t-state').textContent = ''; };
+
+$('#t-run').onclick = async () => {
+  const model = $('#t-model').value;
+  if (!model) return toast('请先选择模型', true);
+  if (!IMG_URI) return toast('请先选择图片', true);
+  const body = { model, image: IMG_URI };
+  const m = MODEL_INDEX[model] || {};
+  if (m.requires_mask && MASK_URI) body.mask = MASK_URI;
+  if (m.needs_style) body.style = $('#t-style').value;
+  if (m.supports_ratio && $('#t-size').value.trim()) body.size = $('#t-size').value.trim();
+  const p = $('#t-prompt').value.trim(); if (p) body.prompt = p;
+  if ($('#t-dry').checked) body.dry_run = true;
+
+  const btn = $('#t-run'); btn.disabled = true; $('#t-state').textContent = '请求中…';
+  const t0 = performance.now();
+  try {
+    const { ok, status, data } = await api('/v1/images/generations', { method: 'POST', body: JSON.stringify(body) });
+    const ms = Math.round(performance.now() - t0);
+    $('#t-state').textContent = `${status} · ${ms}ms`;
+    if (!ok) {
+      $('#t-result').innerHTML = `<div class="li"><span class="b">${tag('失败', 'bad')}</span>
+        <span><b>${(data.error || {}).code || status}</b><br><span class="hint">${(data.error || {}).message || ''}</span></span></div>
+        <pre>${JSON.stringify(data, null, 2)}</pre>`;
+      return;
+    }
+    const item = (data.data || [])[0] || {};
+    const warns = (data.warnings || []);
+    let html = '';
+    if (data.dry_run) {
+      html += `<div class="li"><span class="b">${tag('干跑', 'warn')}</span><span>未触上游，仅预览出站报文</span></div>`;
+    } else if (item.b64_json) {
+      const mime = item.mime || 'image/jpeg';
+      html += `<img class="thumb" alt="结果" src="data:${mime};base64,${item.b64_json}">`;
+    } else if (item.url) {
+      html += `<a href="${item.url}" target="_blank" rel="noreferrer">${item.url}</a>`;
+    }
+    const rows = [
+      ['尺寸', item.size || '—'],
+      ['通路', (data.upstream || {}).path || (data.preview ? 'dry-run' : '—')],
+      ['耗时', ms + 'ms'],
+    ];
+    html += `<div style="margin-top:10px">${rows.map(([k, v]) => `<div class="kv"><span class="k">${k}</span><span class="v">${v}</span></div>`).join('')}</div>`;
+    if (warns.length) html += `<div class="ul" style="margin-top:10px">${warns.map(w => `<div class="li"><span class="b">${tag('告警', 'warn')}</span><span class="hint">${w}</span></div>`).join('')}</div>`;
+    html += `<details style="margin-top:10px"><summary class="hint">原始响应</summary><pre>${JSON.stringify(data.data ? { ...data, data: [{ ...item, b64_json: item.b64_json ? '…（已省略）' : undefined }] } : data, null, 2)}</pre></details>`;
+    $('#t-result').innerHTML = html;
+  } catch (e) {
+    $('#t-state').textContent = '出错';
+    toast(e.message, true);
+  } finally { btn.disabled = false; }
+};
+
+/* ── 日志 ───────────────────────────────────────────────── */
+async function loadLogs() {
+  try {
+    const { data } = await api('/panel/api/logs?n=300');
+    const items = data.items || [];
+    $('#log-box').innerHTML = items.length
+      ? items.slice().reverse().map(i =>
+          `<div class="l"><span class="t">${i.t}</span><span class="lv ${i.level}">${i.level}</span><span class="m">${escapeHtml(i.msg)}</span></div>`).join('')
+      : '<div class="hint">暂无日志</div>';
+  } catch (e) { /* 401 已由 api() 处理 */ }
+}
+function escapeHtml(s) { return String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])); }
+$('#refresh-logs').onclick = loadLogs;
+setInterval(() => { if (!$('#v-logs').hidden && $('#log-auto').checked) loadLogs(); }, 5000);
+
+/* ── 关于 ───────────────────────────────────────────────── */
+async function loadAbout() {
+  kv($('#a-endpoints'), [
+    ['健康', '/healthz'],
+    ['就绪（探针同源）', '/readyz'],
+    ['能力全集', '/capabilities（需 Key）'],
+    ['生成', 'POST /v1/images/generations（需 Key）'],
+    ['发现端点', '/v1/models（免鉴权）'],
+    ['服务说明书', '/llms.txt'],
+    ['OpenAPI', '/docs'],
+    ['运维指标', '/stats（需 Key，反代应挡住）'],
+  ]);
+  try {
+    const { data } = await api('/readyz');
+    const c = data.checks || {};
+    kv($('#a-settings'), [
+      ['上游', c.upstream_endpoint],
+      ['输入图送法', c.upload_mode],
+      ['剥离水印', c.strip_watermark ? '是' : '否'],
+      ['老接口', `${(c.legacy || {}).mode} · ${(c.legacy || {}).base || '—'}`],
+      ['老接口入参上限', `${(c.legacy_limits || {}).max_side}px / ${(c.legacy_limits || {}).max_bytes}B`],
+      ['冷却窗', fmt((c.risk_window || {}).cooldown_s) + 's'],
+      ['产物目录', c.media_dir],
+    ]);
+  } catch { /* 忽略 */ }
+}
+
+/* ── 启动 ───────────────────────────────────────────────── */
+function loadAll() {
+  loadOverview();
+  loadCaps();
+}
+showView((location.hash || '#overview').slice(1), false);
+loadAll();
+</script>
+</body>
+</html>

@@ -71,6 +71,7 @@ def render(settings: Settings) -> str:
       <li><a href="/llms.txt">/llms.txt</a> —— 给 LLM/Agent 的说明书（能力表 / 参数 / 风格表 / 错误码）</li>
       <li><a href="/v1/models">/v1/models</a> —— 本部署可调用的模型</li>
       <li><a href="/healthz">/healthz</a> · <a href="/readyz">/readyz</a> —— 存活 / 就绪</li>
+      <li><a href="/panel">/panel</a> —— 管理面板（总览 / 能力 / 测试台 / 日志；试跑与线上同一条链路）</li>
     </ul>
   </div>
 

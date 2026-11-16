@@ -40,6 +40,7 @@ curl -s localhost:8700/v1/images/generations -H 'content-type: application/json'
 | 改**老接口兜底**（开关 / 映射 / 轮询） | `app/config.py`（`LEGACY*`）+ `client.py::legacy_process` + `app/models.py`（`legacy_type`） |
 | 改响应形状 / 校验 / 闸门编排 | `app/service.py`（响应唯一出口） |
 | 改路由 / 鉴权 / 运维面 | `app/main.py` |
+| 改**管理面板**（总览 / 能力 / 测试台 / 日志） | `app/panel/index.html`（单文件前端，零构建）+ `app/admin.py`（只补 HTML 外壳与日志缓冲） |
 | 改速率闸门 / 冷却窗 | `app/gate.py` |
 | 改配置 | `app/config.py`（**每个旋钮都必须有人读**，有门禁） |
 | 跑零成本自检 | `python scripts/probe.py`（shapes + loop；live 需 `--live`） |
@@ -96,5 +97,7 @@ docker compose up -d          # 端口 8700；MEDIA_DIR 卷；健康检查打 /h
 ```
 
 - ⚠️ **单 worker 是架构决定**：速率闸门与冷却窗是进程内状态（`gunicorn_conf.py` 有详注）；
-- 反代时 **`/stats` 必须挡住**；`/readyz` 给出 cookie/凭据来源/闸门状态（无凭据原文）；
+- 反代时 **`/stats` 与 `/panel` 必须挡住**；`/readyz` 给出 cookie/凭据来源/闸门状态（无凭据原文）；
+- 管理面板在 **`/panel`**：外壳免鉴权（不含秘密），`/panel/api/*` 与 `/v1/*` 同一把 Key；
+  面板**不另写一份校验**——测试台直接打 `POST /v1/images/generations`，干跑即零上游；
 - 上游风控命中后：在真实浏览器打开文心页面过一次验证框，或等冷却窗过期。

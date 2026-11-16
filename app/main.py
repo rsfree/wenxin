@@ -27,6 +27,7 @@ from fastapi.staticfiles import StaticFiles
 from loguru import logger
 
 from . import __version__
+from .admin import mount_admin
 from .config import Settings, get_settings
 from .errors import UPSTREAM_KIND_STATUS, ApiError, UpstreamError
 from .gate import RateGate, RiskWindow
@@ -320,6 +321,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             unsupported=unsupported,
         )
         return JSONResponse(status_code=200, content=body)
+
+    # ---------- 管理面板（运维面） ----------
+    # 依赖用参数注入（而不是 admin 里 import require_api_key），避免 main ↔ admin 循环导入。
+    mount_admin(app, require_key=require_api_key)
 
     # ---------- 结果取件（response_format=url 时产生） ----------
     # 🔴 目录必须在 mount **之前**存在：StaticFiles(check_dir=True) 在挂载时就校验，

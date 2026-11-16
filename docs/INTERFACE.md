@@ -18,8 +18,14 @@
 | `GET` | `/healthz` `/readyz` | 🔓 免 | 存活 / 就绪（运维面，无凭据原文） |
 | `GET` | `/stats` | ✅ Key | 闸门快照 + 最近 50 条 span |
 | `GET` | `/files/{name}` | 🔓 免 | `response_format=url` 的取件（内容寻址文件名） |
+| `GET` | `/panel` | 🔓 免 | **管理面板**（单文件 HTML，无秘密）。总览/能力/测试台/日志四页 |
+| `GET` | `/panel/api/logs` | ✅ Key | 进程内日志环形缓冲（最多 2000 条，`{t,level,msg}`） |
 
-> ⚠️ `/stats` 上反代时**必须挡住**（含闸门状态与调用统计）。
+> ⚠️ `/stats` 与 `/panel` 上反代时**必须挡住**（含闸门状态、调用统计与日志）。
+>
+> 面板的三条纪律：**不复制业务逻辑**（测试台直接打 `/v1/images/generations`）、
+> **不复制观测数据**（总览读 `/healthz`+`/readyz`，能力表读 `/capabilities`）、
+> **HTML 不含密钥**（Key 由前端向使用者索取，只发给 `/panel/api/*`）。
 
 ---
 
