@@ -84,6 +84,7 @@ app/upstream/baidu/     翻译层（纯函数）+ HTTP 客户端（凭据/BOS/SS
 <venv>/bin/python -m ruff check app tests scripts
 <venv>/bin/python scripts/probe.py            # shapes 19 条 + loop 19 条（假上游，零触网）
 PY=<venv>/bin/python zsh scripts/smoke.sh     # 真起服务+真 HTTP+假上游，22 项
+python3 .fixloop/e2e_panel.py --real           # 端到端：bsk 驱动真浏览器打管理面板（含真实出图）
 <venv>/bin/python scripts/probe.py --live --cap wenxin:clarity --image <url> \
     --cookie-file ../reverse-proxy/wenxin/var/identity.json    # ⚠️ 真实调用（免费，别连打）
 <venv>/bin/python scripts/live_legacy.py --image /tmp/photo.jpg \

@@ -20,3 +20,7 @@ venv/
 
 # 本地测试素材（公司 logo，不进公开仓库）
 testdata/
+
+# fix-loop 运行留痕（本地证据，不入库；判据与映射表本身要入库）
+.fixloop/logs/
+.fixloop/runs.ndjson

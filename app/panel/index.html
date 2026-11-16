@@ -104,6 +104,8 @@ td.mono,.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
 .field textarea{min-height:64px;resize:vertical;font-family:var(--mono);font-size:12.5px}
 .hint{font-size:11.5px;color:var(--ink-3)}
 
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;
+  clip:rect(0 0 0 0);white-space:nowrap;border:0}
 .drop{border:1.5px dashed var(--line);border-radius:10px;padding:16px;text-align:center;color:var(--ink-3);font-size:12.5px;background:var(--surface-2);cursor:pointer}
 .drop.over{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
 .thumb{max-width:100%;max-height:260px;border-radius:8px;border:1px solid var(--line);background:
@@ -198,15 +200,21 @@ pre{font-family:var(--mono);font-size:12px;line-height:1.6;background:var(--surf
         <div class="card"><h2>请求</h2><div class="body">
           <div class="field"><label>图片（必填）</label>
             <div class="drop" id="drop-img">点击或拖入图片 → 转 data URI</div>
-            <input type="file" id="file-img" accept="image/*" hidden>
+            <input type="file" id="file-img" accept="image/*" class="sr-only">
             <img class="thumb" id="prev-img" hidden alt="预览">
           </div>
+          <div class="field"><label for="t-image-url">或粘贴图片 URL</label>
+            <input type="text" id="t-image-url" aria-label="图片URL"
+                   placeholder="http(s)://… 或 data:image/…">
+            <div class="hint">本地部署可直接填内网/回环地址，省掉上传一步</div>
+          </div>
+          <img class="thumb" id="prev-url" hidden alt="URL 预览">
           <div class="field"><label>模型</label><select id="t-model"></select>
             <div class="hint" id="t-model-hint"></div></div>
           <div class="grid g2" style="gap:10px">
             <div class="field" id="f-mask" hidden><label>遮罩（黑底白框，白=要处理）</label>
               <div class="drop" id="drop-mask">点击或拖入遮罩</div>
-              <input type="file" id="file-mask" accept="image/*" hidden>
+              <input type="file" id="file-mask" accept="image/*" class="sr-only">
             </div>
             <div class="field" id="f-style" hidden><label>风格</label><select id="t-style"></select></div>
           </div>
@@ -216,7 +224,7 @@ pre{font-family:var(--mono);font-size:12px;line-height:1.6;background:var(--surf
             <div class="field"><label>prompt（仅局部替换等消费）</label>
               <input type="text" id="t-prompt" placeholder="留空即不传"></div>
           </div>
-          <label class="li" style="cursor:pointer"><input type="checkbox" id="t-dry"> 干跑（只出预览计划，零上游请求）</label>
+          <label class="li" style="cursor:pointer"><input type="checkbox" id="t-dry" aria-label="干跑开关"> 干跑（只出预览计划，零上游请求）</label>
           <div style="display:flex;gap:8px;margin-top:14px">
             <button class="btn primary" id="t-run">运行</button>
             <button class="btn" id="t-clear">清空结果</button>
@@ -413,7 +421,7 @@ async function loadCaps() {
       ? `<div class="ul">${CAPS.not_available.map(m =>
           `<div class="li"><span class="b">${tag('不可用', 'mute')}</span>
            <span><b>${m.id.replace('wenxin:', '')}</b>（${m.title}）<br>
-           <span class="hint">${m.reason || ''}</span></span></div>`).join('')}</div>`
+           <span class="hint">${plain(m.reason)}</span></span></div>`).join('')}</div>`
       : '<div class="hint">全部注册能力在当前部署均可用。</div>';
 
     fillModelSelect();
@@ -443,6 +451,17 @@ wireDrop('#drop-img', '#file-img', uri => {
   IMG_URI = uri;
   const im = $('#prev-img'); im.src = uri; im.hidden = false;
   $('#drop-img').textContent = '已载入（点击可换）';
+  $('#t-image-url').value = '';        // 文件与 URL 二选一，后写者为准
+  $('#prev-url').hidden = true;
+});
+/* 粘贴 URL：与选文件等价（内网/回环地址也能用），且**可被自动化驱动** */
+$('#t-image-url').addEventListener('input', e => {
+  const v = e.target.value.trim();
+  if (!v) return;
+  IMG_URI = v;
+  const im = $('#prev-url'); im.src = v; im.hidden = false;
+  $('#prev-img').hidden = true;
+  $('#drop-img').textContent = '使用 URL 中（点击可改为本地文件）';
 });
 wireDrop('#drop-mask', '#file-mask', uri => {
   MASK_URI = uri; $('#drop-mask').textContent = '已载入遮罩（点击可换）';
@@ -508,6 +527,7 @@ $('#t-run').onclick = async () => {
       html += `<a href="${item.url}" target="_blank" rel="noreferrer">${item.url}</a>`;
     }
     const rows = [
+      ['能力', (data.effective || {}).query || (MODEL_INDEX[model] || {}).title || '—'],
       ['尺寸', item.size || '—'],
       ['通路', (data.upstream || {}).path || (data.preview ? 'dry-run' : '—')],
       ['耗时', ms + 'ms'],
