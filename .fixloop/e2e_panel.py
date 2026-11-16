@@ -240,6 +240,13 @@ def run_flow(real: bool, mutation: bool) -> list[str]:
     require(vom, "门禁", "自检结果")
     done.append("R15 一键干跑自检")
 
+    # ---- R16 风控页：实测档案 + 实时状态 ----
+    vom = click_text(vom, "风控")
+    require(vom, "实测档案", "风控页")
+    require(vom, "出口已打标", "风控页")      # 四轮压测里最关键的那条结论
+    require(vom, "未取证", "风控页")
+    done.append("R16 风控页")
+
     # ---- R6 日志页 ----
     vom = click_text(vom, "日志")
     require(vom, "BAIDU_", "日志页")

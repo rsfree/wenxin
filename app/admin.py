@@ -31,6 +31,7 @@ from loguru import logger
 
 from . import identity, usage
 from .errors import ApiError, UpstreamError
+from . import ratecard
 from .models import CAPABILITIES, availability
 from .service import run, validate_request
 
@@ -105,6 +106,32 @@ def mount_admin(app: FastAPI, require_key: Callable[..., Any]) -> None:
                           _: str = Depends(require_key)) -> dict[str, Any]:
         """进程内用量：总量 / 每模型成功率与 p50 / 最近调用明细。"""
         return usage.snapshot(limit=n)
+
+    # ------------------------------------------------------------------ 风控
+    @app.get("/panel/api/ratecard")
+    async def panel_ratecard(request: Request,
+                             _: str = Depends(require_key)) -> dict[str, Any]:
+        """风控与容量：**历史实测档案**（静态）+ **当前闸门/冷却状态**（实时）。
+
+        两者刻意分开放：`experiments` 是证据，`live` 是现在的样子。
+        把它们混成一个"配额"数字，会让人以为 45–55 发是配置项。
+        """
+        state = request.app.state
+        return {
+            **ratecard.payload(),
+            "live": {
+                "rate_gate": state.gate.snapshot(),
+                "risk_window": state.risk.snapshot(),
+                "proxy_pool": state.client.masked_proxies(),
+                "legacy": state.settings.LEGACY,
+                "settings": {
+                    "min_interval_s": state.settings.MIN_INTERVAL,
+                    "per_minute": state.settings.PER_MINUTE,
+                    "max_wait_s": state.settings.MAX_WAIT,
+                    "cooldown_s": state.settings.COOLDOWN,
+                },
+            },
+        }
 
     # ------------------------------------------------- 一键干跑（零上游自检）
     @app.post("/panel/api/dryrun-all")

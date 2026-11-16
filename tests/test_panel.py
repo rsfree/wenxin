@@ -15,6 +15,7 @@ from app import identity, usage
 from app.admin import _LOG_CAP, recent_logs, reset_logs
 from app.main import create_app
 from app.models import CAPABILITIES, availability
+from app.ratecard import EXPERIMENTS
 from app.upstream.baidu import BaiduClient
 from tests.helpers import PNG_SMALL, UpstreamSpy, data_uri, settings
 
@@ -203,3 +204,29 @@ def test_panel_html_has_usage_and_actions(tmp_path):
         html = c.get("/panel").text
     for needle in ("data-v=\"usage\"", "一键干跑（零上游）", "铸造新身份", "/panel/api/usage"):
         assert needle in html, needle
+
+
+# ------------------------------------------------------------ 风控档案页
+def test_ratecard_is_evidence_plus_live_state(tmp_path):
+    """风控页的两半必须分清：`experiments` 是历史证据，`live` 是当前状态。"""
+    app = _app(tmp_path)
+    with TestClient(app) as c:
+        body = c.get("/panel/api/ratecard").json()
+    assert len(body["experiments"]) == len(EXPERIMENTS) >= 6
+    # 两条链路都要在册，且 must 有"出口已打标"这一类结果
+    assert {r["channel"] for r in body["experiments"]} == {"编辑", "文生图"}
+    assert any(r["outcome"] == "hard" for r in body["experiments"])
+    assert body["findings"] and body["unknown"]
+    # live 是实时状态，与 /readyz 同源
+    live = body["live"]
+    assert live["rate_gate"]["per_minute"] == app.state.settings.PER_MINUTE
+    assert live["risk_window"]["cooling"] is False
+    assert set(live["settings"]) == {"min_interval_s", "per_minute", "max_wait_s", "cooldown_s"}
+
+
+def test_ratecard_needs_key_and_panel_has_the_tab(tmp_path):
+    app = _app(tmp_path, API_KEYS="sk-live")
+    with TestClient(app) as c:
+        assert c.get("/panel/api/ratecard").status_code == 401
+        html = c.get("/panel").text
+    assert 'data-v="risk"' in html and "loadRisk" in html

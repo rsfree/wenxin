@@ -144,6 +144,7 @@ pre{font-family:var(--mono);font-size:12px;line-height:1.6;background:var(--surf
       <button data-v="caps"><span class="ic">≡</span>能力</button>
       <button data-v="try"><span class="ic">▷</span>测试台</button>
       <button data-v="usage"><span class="ic">∑</span>用量</button>
+      <button data-v="risk"><span class="ic">⚠</span>风控</button>
       <button data-v="logs"><span class="ic">⌁</span>日志</button>
       <button data-v="about"><span class="ic">i</span>关于</button>
     </nav>
@@ -249,6 +250,35 @@ pre{font-family:var(--mono);font-size:12px;line-height:1.6;background:var(--surf
     </section>
 
     <!-- ── 日志 ───────────────────────────────────────────── -->
+    <section id="v-risk" hidden>
+      <div class="head">
+        <div><h1>风控与容量</h1>
+          <p>上半是<b>实测档案</b>（证据，不是配置）；下半是<b>当前状态</b>（实时）</p></div>
+        <div class="actions"><button class="btn" id="refresh-risk">刷新</button></div>
+      </div>
+      <div class="grid g3" style="margin-bottom:14px">
+        <div class="card"><h2>速率闸门</h2><div class="body">
+          <div class="big" id="r-rate">—</div>
+          <div class="hint" id="r-gate"></div></div></div>
+        <div class="card"><h2>昆仑冷却</h2><div class="body">
+          <div class="big" id="r-cool">—</div>
+          <div class="hint" id="r-coolhint"></div></div></div>
+        <div class="card"><h2>出口</h2><div class="body">
+          <div class="big" id="r-egress">—</div>
+          <div class="hint" id="r-egresshint"></div></div></div>
+      </div>
+      <div class="card"><h2>实测档案 <span class="hint" id="r-date"></span></h2><div class="body">
+        <table>
+          <thead><tr><th>渠道</th><th>机器</th><th>身份</th><th>速率/分</th>
+            <th>发出</th><th>成功</th><th>结果</th><th>说明</th></tr></thead>
+          <tbody id="r-rows"><tr><td colspan="8" class="hint">加载中…</td></tr></tbody>
+        </table>
+      </div></div>
+      <div class="card" style="margin-top:14px"><h2>结论</h2><div class="body" id="r-findings"></div></div>
+      <div class="card" style="margin-top:14px"><h2>未取证（别当成已知）</h2>
+        <div class="body" id="r-unknown"></div></div>
+    </section>
+
     <section id="v-usage" hidden>
       <div class="head">
         <div><h1>用量</h1><p>进程内计数（单 worker 假设）；<b>干跑不计入 p50</b>，失败也进账</p></div>
@@ -359,7 +389,7 @@ function tag(text, kind) { return `<span class="tag ${kind}">${text}</span>`; }
 function plain(s) { return String(s || '').replace(/\*\*/g, '').replace(/`/g, '').replace(/\s+/g, ' ').trim(); }
 
 /* ── 导航 ───────────────────────────────────────────────── */
-const VIEWS = ['overview', 'caps', 'try', 'usage', 'logs', 'about'];
+const VIEWS = ['overview', 'caps', 'try', 'usage', 'risk', 'logs', 'about'];
 function showView(v, push = true) {
   if (!VIEWS.includes(v)) v = 'overview';
   $$('#nav button').forEach(b => {
@@ -370,6 +400,7 @@ function showView(v, push = true) {
   if (v === 'caps') loadCaps();
   if (v === 'logs') loadLogs();
   if (v === 'usage') loadUsage();
+  if (v === 'risk') loadRisk();
   if (v === 'about') loadAbout();
 }
 $('#nav').addEventListener('click', e => {
@@ -616,6 +647,60 @@ async function loadUsage() {
 }
 $('#refresh-usage').onclick = loadUsage;
 setInterval(() => { if (!$('#v-usage').hidden && $('#usage-auto').checked) loadUsage(); }, 5000);
+
+/* ── 风控与容量 ─────────────────────────────────────────── */
+const OUTCOME_TAG = { clean: ['零风控', 'ok'], hit: ['命中', 'bad'], hard: ['出口已打标', 'bad'] };
+
+async function loadRisk() {
+  try {
+    const { data } = await api('/panel/api/ratecard');
+    const live = data.live || {};
+    const g = live.rate_gate || {};
+    const st = live.settings || {};
+
+    $('#r-rate').textContent = `${st.per_minute ?? '—'}/min`;
+    $('#r-rate').style.color = '';
+    $('#r-gate').textContent =
+      `最小间隔 ${st.min_interval_s}s · 排队上限 ${st.max_wait_s}s · 窗口在途 ${g.window_len ?? 0}`;
+
+    const rw = live.risk_window || {};
+    $('#r-cool').textContent = rw.cooling ? '冷却中' : '正常';
+    $('#r-cool').style.color = rw.cooling ? 'var(--bad)' : 'var(--ok)';
+    $('#r-coolhint').textContent = rw.cooling
+      ? `剩余 ${rw.remaining_s}s（窗内零上游请求）`
+      : `冷却窗 ${rw.cooldown_s ?? st.cooldown_s}s（命中后启用）`;
+
+    const pool = live.proxy_pool || [];
+    $('#r-egress').textContent = pool.length ? `池 ${pool.length}` : '直连';
+    $('#r-egresshint').textContent = pool.length
+      ? '每请求轮换出口（唯一被证明有效的换线手段）'
+      : '单出口：触发后只能等冷却，换身份也只多买一轮';
+
+    $('#r-date').textContent = `最近实测 ${data.measured_at || '—'}`;
+    const rows = data.experiments || [];
+    $('#r-rows').innerHTML = rows.map(r => {
+      const [label, kind] = OUTCOME_TAG[r.outcome] || [r.outcome || '—', 'mute'];
+      return `<tr>
+        <td class="mono">${r.channel}</td>
+        <td class="mono hint">${r.host || '—'}</td>
+        <td class="mono hint">${r.identity || '—'}</td>
+        <td class="mono">${r.rate}</td>
+        <td class="mono">${r.sent}</td>
+        <td class="mono">${r.ok}</td>
+        <td>${tag(label, kind)}</td>
+        <td class="hint">${plain(r.note)}</td>
+      </tr>`;
+    }).join('') || '<tr><td colspan="8" class="hint">暂无记录</td></tr>';
+
+    $('#r-findings').innerHTML = (data.findings || []).map(x =>
+      `<div class="li"><span class="b">·</span><span class="hint">${plain(x)}</span></div>`).join('')
+      || '<div class="hint">—</div>';
+    $('#r-unknown').innerHTML = (data.unknown || []).map(x =>
+      `<div class="li"><span class="b">?</span><span class="hint">${plain(x)}</span></div>`).join('')
+      || '<div class="hint">—</div>';
+  } catch (e) { toast('风控数据加载失败：' + e.message, true); }
+}
+$('#refresh-risk').onclick = loadRisk;
 
 /* ── 一键干跑（零上游自检） ─────────────────────────────── */
 $('#dryrun-btn').onclick = async () => {

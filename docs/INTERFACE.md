@@ -20,6 +20,7 @@
 | `GET` | `/files/{name}` | 🔓 免 | `response_format=url` 的取件（内容寻址文件名） |
 | `GET` | `/panel` | 🔓 免 | **管理面板**（单文件 HTML，无秘密）。总览/能力/测试台/日志四页 |
 | `GET` | `/panel/api/logs` | ✅ Key | 进程内日志环形缓冲（最多 2000 条，`{t,level,msg}`） |
+| `GET` | `/panel/api/ratecard` | ✅ Key | 风控页数据：**历史实测档案**（`experiments`/`findings`/`unknown`）+ **当前闸门状态**（`live`） |
 
 > ⚠️ `/stats` 与 `/panel` 上反代时**必须挡住**（含闸门状态、调用统计与日志）。
 >
