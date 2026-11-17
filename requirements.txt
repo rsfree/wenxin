@@ -17,3 +17,6 @@ loguru>=0.7
 pillow>=10.0
 # 表单解析（/v1/audio/transcriptions 的 multipart 上传 —— OpenAI 兼容 ASR 入口）
 python-multipart>=0.0.9
+# WebSocket 客户端（ASR 走 wss://vse.baidu.com/ws_api；只在 client.asr 路径按需导入，
+# 但**必须在镜像里**——漏装的表现是调用即 ImportError，冒烟测不出来）
+websockets>=13
