@@ -6,7 +6,7 @@
 - **端口**：`127.0.0.1:39014 -> 容器 8700`（**只绑回环**）
 - **入口**：`https://baidu.1task.cn`（nginx + ACME 证书）
 
-## 升级步骤（当前线上 0.0.18）
+## 升级步骤（当前线上 0.0.19）
 
 ```bash
 # 本机：先发版，拿到新 tag
@@ -58,6 +58,12 @@ docker compose up -d            # 回到 0.0.13（旧镜像 ghcr.io/rsfree/baidu
 
 ## 变更记录
 
+- **2026-11-18（0.0.18 → 0.0.19）**：能力面 15 → 23 项（可用 19 项）。新增
+  `wenxin:draw`（文生图）/`wenxin:lyrics`（歌词）/`wenxin:tts`（语音合成）/
+  `wenxin:asr`（语音识别，含长音频自动分段），面板加「风控」页。
+  新端点 `POST /v1/audio/speech`、`POST /v1/audio/transcriptions`（同一个 `sk-baidu`）。
+  依赖新增 `python-multipart`、`websockets`。
+  公网实测：TTS 2.6s 音频 / ASR 文本回环一致 / lyrics 725 帧 1088 字 / draw 4 图 23s。
 - **2026-11-16（0.0.13 → 0.0.18）**：仓库改名 `rsfree/baidu` → `rsfree/wenxin`，镜像随之改到
   `ghcr.io/rsfree/wenxin`（包已 public，不再需要节点源码构建）；新增管理面板；
   入口层加 `/panel` `/stats` 拦截；`BAIDU_LEGACY=fallback` 生效。
