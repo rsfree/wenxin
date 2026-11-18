@@ -1,10 +1,12 @@
 # baidu-service · ai-prod 部署
 
 - **节点**：ai-prod `210.121.44.245`（首尔，裸机）
-- **目录**：`/opt/baidu`（沿用旧服务名；容器 `baidu`，域名 `baidu.1task.cn`）
+- **目录**：`/opt/baidu`（沿用旧目录/容器名；**对外域名 = `wenxin.1task.cn`**）
 - **镜像**：`ghcr.io/rsfree/wenxin:<tag>`（**public，节点直接 pull**）
 - **端口**：`127.0.0.1:39014 -> 容器 8700`（**只绑回环**）
-- **入口**：`https://baidu.1task.cn`（nginx + ACME 证书）
+- **入口**：`https://wenxin.1task.cn`（nginx + ACME 证书）。
+  ⚠️ 旧域名 `baidu.1task.cn` 已于 **2026-11-18 停用**（vhost 移入 `/root/baidu-domain-retired-20261118/`、
+  DNS A 记录已删）；如需回滚见文末「回滚」。
 
 ## 升级步骤（当前线上 0.0.19）
 
@@ -46,7 +48,7 @@ curl -s --noproxy '*' http://127.0.0.1:39014/healthz   # 期望 version == <新�
 
 ## 管理面板只能走 SSH 隧道
 
-`/panel` 与 `/stats` 在**入口层**返回 404（`baidu.1task.cn-ssl.conf` 里两条 `location`）。原因：
+`/panel` 与 `/stats` 在**入口层**返回 404（`wenxin.1task.cn-ssl.conf` 里两条 `location`）。原因：
 本部署 `BAIDU_API_KEYS` **为空**（服务侧不鉴权），面板若公开，任何人都能试跑、翻日志、
 甚至「铸造新身份」改写线上 cookie。
 
@@ -57,7 +59,8 @@ open http://127.0.0.1:18700/panel
 
 ## 鉴权（2026-11-17 起）
 
-- **Key 命名约定：`sk-` + 二级域名** —— 本站点 `baidu.1task.cn` ⇒ **`sk-baidu`**。
+- **Key 命名约定：`sk-` + 二级域名** —— 本站点 `wenxin.1task.cn` ⇒ **`sk-wenxin`**
+  （旧 `sk-baidu` 仍保留在 `.env` 里，属宽限期；确认无调用方后可移除）。
   值只写在 `.env` 的 `BAIDU_API_KEYS`，**不入库、不进文档**。
 - 调用方须带 `Authorization: Bearer sk-baidu`；`/v1/models` 与 `/healthz` 按设计免鉴权
   （发现端点，兄弟服务一致）。
@@ -78,6 +81,10 @@ docker compose up -d            # 回到 0.0.13（旧镜像 ghcr.io/rsfree/baidu
 
 ## 变更记录
 
+- **2026-11-18（域名收敛）**：`wenxin.1task.cn` 上线并成为**唯一入口**；
+  `baidu.1task.cn` 停用（vhost 移入 `/root/baidu-domain-retired-20261118/`，
+  DNS `jdns delete 1task.cn baidu A` 已删 rid=2102975959858595840）。
+  停用前核对访问日志：当日 18 次请求全部来自本机验证与扫描器，无第三方调用方。
 - **2026-11-18（0.0.18 → 0.0.19）**：能力面 15 → 23 项（可用 19 项）。新增
   `wenxin:draw`（文生图）/`wenxin:lyrics`（歌词）/`wenxin:tts`（语音合成）/
   `wenxin:asr`（语音识别，含长音频自动分段），面板加「风控」页。

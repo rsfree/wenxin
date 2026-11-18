@@ -19,7 +19,7 @@ services:
     environment:
       BAIDU_PORT: "8700"                 # 容器内固定 8700（Dockerfile EXPOSE）
     ports:
-      - "127.0.0.1:39014:8700"           # 仅回环；公网入口 = nginx + baidu.1task.cn
+      - "127.0.0.1:39014:8700"           # 仅回环；公网入口 = nginx + wenxin.1task.cn
     volumes:
       - baidu-media:/srv/var/media       # response_format=url 的落盘（不设 TTL，由部署方清理）
     healthcheck:

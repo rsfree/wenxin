@@ -47,7 +47,7 @@ fi
 say "3/6 写 443 vhost"
 [[ $DRY -eq 1 ]] && { echo "[dry-run] 将写 $VHOST_DIR/$DOMAIN-ssl.conf"; exit 0; }
 cat > "$VHOST_DIR/$DOMAIN-ssl.conf" <<CONF
-# wenxin-service HTTPS 入口（与 baidu.1task.cn 同一服务实例；key = $KEY）
+# wenxin-service HTTPS 入口（本服务的**唯一**入口；key = $KEY）
 # 证书：acme.sh（Let's Encrypt），HTTP-01，自动续期并 reload nginx。
 server {
     listen 443 ssl;
@@ -91,4 +91,4 @@ echo "  错误 key : $(curl -s -o /dev/null -w '%{http_code}' --noproxy '*' --ma
 echo "  $KEY: $(curl -s -o /dev/null -w '%{http_code}' --noproxy '*' --max-time 15 "https://$DOMAIN/v1/models" -H "Authorization: Bearer $KEY") （期望 200）"
 echo "  /panel   : $(curl -s -o /dev/null -w '%{http_code}' --noproxy '*' --max-time 15 "https://$DOMAIN/panel") （期望 404）"
 echo
-echo "✓ 完成：https://$DOMAIN （与 baidu.1task.cn 同实例，key=sk-wenxin）"
+echo "✓ 完成：https://$DOMAIN （key=sk-wenxin）"
