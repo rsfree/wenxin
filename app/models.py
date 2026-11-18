@@ -328,9 +328,12 @@ CAPABILITIES: dict[str, Capability] = {
         tool_type="2", verified=False, legacy_type="1",
         evidence=(
             "主链：§3 枚举期出图 ✅；**§8.3 复测两次均失败**（items:null + 编辑器深链）。"
-            "老接口：**type=1 实测出图 ✅**（3.1s/900x600，经服务）"
+            "老接口：**type=1 实测出图 ✅**（3.1s/900x600，经服务）；"
+            "**2026-11-18 端到端复验**：2048² 带水印照片 → 819²/90KB → 4.9s 出图，水印确被抹除"
+            "（深色背景留可见模糊斑）。同日判决入参判据 =「宽度 ≥600 且质量不塌」，"
+            "旧的 640/40000 压缩会把大图压成 512²(q≈45) ⇒ **必触发 resType=2**（已修，见 UPSTREAM §10）"
         ),
-        notes="主链形态疑似已改「跳转交互式编辑器」；开 BAIDU_LEGACY 走老接口即可用",
+        notes="主链形态疑似已改「跳转交互式编辑器」；开 BAIDU_LEGACY 走老接口即可用（入参需宽 ≥600px）",
     ),
     "wenxin:erase": Capability(
         name="wenxin:erase", title="消除",

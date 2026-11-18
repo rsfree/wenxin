@@ -75,10 +75,14 @@ class Settings(BaseSettings):
     RESULT_FETCH_RETRIES: int = 2
 
     #: 老接口（image.baidu.com/aigc）**入参上限**：长边像素 / 字节。超限则自动等比压缩后再提交。
-    #: 依据（2026-09-24 实测 type=1）：600×400 / 39.9KB 收单；800×533 / 63.2KB 与 900×600 / 73.3KB 被拒（resType=2）。
-    #: 同一时刻 type=3 用同一张大图收单 ⇒ 差异在**入参体积**，不在链路。
-    LEGACY_MAX_IMAGE_SIDE: int = 640
-    LEGACY_MAX_IMAGE_BYTES: int = 40000
+    #: 依据（2026-11-18 复验 type=1，共 12 次真实提交，见 docs/UPSTREAM.md §10）：
+    #: **真正的判据是「宽度 ≥ 600 且质量不塌」**，不是「字节越小越好」——
+    #:   512×512(q45..62, 21~37KB) 全拒；512×512(q70/80) 收；
+    #:   600×400/35KB、900×600(q35)/35KB、900×600(q75)/66KB、1280×853(q70)/110KB 全收；
+    #:   1280×1280(q75)/139KB 拒 ⇒ 体积上界落在 110~139KB 之间。
+    #: 旧值 640/40000 会把 2048² 输入压成 512²(q≈45) ⇒ **宽度不达标 + 质量塌陷 ⇒ 必触发 resType=2**。
+    LEGACY_MAX_IMAGE_SIDE: int = 1280
+    LEGACY_MAX_IMAGE_BYTES: int = 110000
 
     #: 老接口把当前 cookie 拉黑时（实测特征：`status=0` 且**无任务号、无 resType**），
     #: 自动**铸一个匿名 cookie**（GET 首页的 Set-Cookie）并重试一次。
