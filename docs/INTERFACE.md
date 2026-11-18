@@ -174,6 +174,8 @@
 
 - 默认 `b64_json`（结果直接进响应体）；`response_format=url` 时落盘 `BAIDU_MEDIA_DIR`，
   以 `/files/{name}` 提供；**文件不设 TTL**，由部署方清理。
+- ⚠️ `data[].url` 是**相对路径**（`/files/xxx.jpg`），不是绝对地址 —— 调用方需拼上
+  服务入口（如 `https://wenxin.1task.cn`）。把它原样回灌 `image` 会 400 `invalid_input_format`。
 - 结果图是**服务自己取回并转存**的（上游 URL 带签名、有有效期）——调用方拿到的是稳定副本。
   老接口的结果（`picArr[0].src` 的 data URI）**走同一交付形态**。
 

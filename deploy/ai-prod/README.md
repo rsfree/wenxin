@@ -8,7 +8,7 @@
   ⚠️ 旧域名 `baidu.1task.cn` 已于 **2026-11-18 停用**（vhost 移入 `/root/baidu-domain-retired-20261118/`、
   DNS A 记录已删）；如需回滚见文末「回滚」。
 
-## 升级步骤（当前线上 0.0.19）
+## 升级步骤（当前线上 0.0.20）
 
 ```bash
 # 本机：先发版，拿到新 tag
@@ -79,8 +79,37 @@ docker compose up -d            # 回到 0.0.13（旧镜像 ghcr.io/rsfree/baidu
 ```
 旧镜像 `ghcr.io/rsfree/baidu:0.0.13` 仍在 GHCR（改名迁移前的包），可回滚。
 
+## 全形态实测（2026-11-19，0.0.20）
+
+部署后对 `https://wenxin.1task.cn` 实跑，**图片 9 发 + TTS 1 发，零风控命中**。
+契约面（零上游）16/16 通过：数组/对象 → `invalid_image`、`[]` → `missing_input`、
+`169.254.169.254` / `127.0.0.1` / `[::1]` → `image_url_blocked`、`file://` →
+`invalid_image_url`、干跑放行、`/panel` `/stats` 404。
+
+| 形态 | 模型 | 结果 |
+|---|---|---|
+| data URI（默认 b64） | clarity | 4096×4096 · 23.4s |
+| 落盘 url | clarity | 4096×4096 · 15.2s |
+| **http(s) URL 作为输入** | clarity | 4096×4096 · 24.5s（代取 453KB，SSRF 放行公网） |
+| 裸 base64 | clarity | 4096×4096 · 15.1s |
+| mask（黑底白框） | erase | 1280×1280 · 9.8s |
+| size=4:3 | expand | 4 图 1360×1024 · 24.9s |
+| style=miyazaki | restyle | 1616×1616 · 18.4s |
+| t2i（prompt） | draw | 4 图 864×1152 · 26.1s |
+| legacy 兜底通路 | dewatermark | 819×819 · 13.0s |
+| 音频端点 | tts | 29376B mp3 · 3.4s |
+
+⚠️ 已知缺口：`data[].url` 是**相对路径**（`/files/xxx.jpg`），不是可直接访问的绝对地址；
+拿它回灌 `image` 会 400 `invalid_input_format`。见 `docs/IMAGE-CONTRACT.md` §4。
+
 ## 变更记录
 
+- **2026-11-19（0.0.19 → 0.0.20）**：图片契约按 image-adapter 校准。
+  ① 外链代取加 SSRF 准入门（`app/upstream/baidu/netguard.py`：scheme 白名单、私网/环回/
+  元数据地址、DNS 全答案；重定向改为自己跟、逐跳校验、5 跳上限）；
+  ② `image` 传数组/对象改报 400 `invalid_image`（原先是误导性的 `missing_input`），
+  `[]` 视为没传；③ 错误报文里的上游 URL 过 `redact_url`，不再带签名 query。
+  备份：`.env.bak-20261119` / `docker-compose.yml.bak-20261119`。
 - **2026-11-18（域名收敛）**：`wenxin.1task.cn` 上线并成为**唯一入口**；
   `baidu.1task.cn` 停用（vhost 移入 `/root/baidu-domain-retired-20261118/`，
   DNS `jdns delete 1task.cn baidu A` 已删 rid=2102975959858595840）。
