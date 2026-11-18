@@ -24,6 +24,21 @@ curl -s --noproxy '*' http://127.0.0.1:39014/healthz   # 期望 version == <新�
 
 `.env` 里是**真实 cookie**（`BAIDU_COOKIE`）——升级时只改 `BAIDU_IMAGE_TAG`，别整体覆盖 `.env`。
 
+## 第二入口：wenxin.1task.cn
+
+同一服务实例（同一容器 `127.0.0.1:39014`）的第二个域名，**key = `sk-wenxin`**
+（约定：`sk-` + 二级域名）。两个 key 都在 `.env` 的 `BAIDU_API_KEYS` 里（逗号分隔），
+从任一域名进来都认。
+
+**部署脚本**：`bash /opt/baidu/setup-wenxin-domain.sh [--dry-run]`（幂等）
+1. 前置检查：DNS → 本机、:80 vhost 存在、`.env` 含 `sk-wenxin`
+2. acme.sh 签发（HTTP-01，webroot `/www/wwwroot/acme`）
+3. 写 `wenxin.1task.cn-ssl.conf` → nginx -t → reload
+4. 公网自检（无 key 401 / key 200 / panel 404）
+
+**DNS 是唯一前置**：`wenxin.1task.cn A 210.121.44.245`（阿里云 hichina，无泛解析，
+每个子域要单独加）。DNS 生效前脚本会在第 1 步直接退出。
+
 ## 管理面板只能走 SSH 隧道
 
 `/panel` 与 `/stats` 在**入口层**返回 404（`baidu.1task.cn-ssl.conf` 里两条 `location`）。原因：
@@ -64,6 +79,7 @@ docker compose up -d            # 回到 0.0.13（旧镜像 ghcr.io/rsfree/baidu
   新端点 `POST /v1/audio/speech`、`POST /v1/audio/transcriptions`（同一个 `sk-baidu`）。
   依赖新增 `python-multipart`、`websockets`。
   公网实测：TTS 2.6s 音频 / ASR 文本回环一致 / lyrics 725 帧 1088 字 / draw 4 图 23s。
+  同日加第二入口域名 `wenxin.1task.cn`（key `sk-wenxin`，见上节）——DNS 待加。
 - **2026-11-16（0.0.13 → 0.0.18）**：仓库改名 `rsfree/baidu` → `rsfree/wenxin`，镜像随之改到
   `ghcr.io/rsfree/wenxin`（包已 public，不再需要节点源码构建）；新增管理面板；
   入口层加 `/panel` `/stats` 拦截；`BAIDU_LEGACY=fallback` 生效。
