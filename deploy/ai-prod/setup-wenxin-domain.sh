@@ -31,17 +31,18 @@ grep -q "$KEY" /opt/baidu/.env || fail "/opt/baidu/.env 的 BAIDU_API_KEYS 不�
 echo "✓ DNS / vhost / key 都就绪"
 
 say "2/6 申请证书（acme.sh，HTTP-01）"
+[[ $DRY -eq 1 ]] && { echo "[dry-run] 将 issue（若缺失）+ install-cert"; exit 0; }
+mkdir -p "$WEBROOT/.well-known/acme-challenge" "$CERT_DIR"
 if [[ -f "$CERT_DIR/fullchain.pem" ]]; then
-  echo "证书已存在，跳过签发（续期由 acme.sh cron 负责）"
+  echo "证书已就位，跳过签发（续期由 acme.sh cron 负责）"
 else
-  [[ $DRY -eq 1 ]] && { echo "[dry-run] 将执行 acme.sh --issue"; exit 0; }
-  mkdir -p "$WEBROOT/.well-known/acme-challenge"
   /root/.acme.sh/acme.sh --issue -d "$DOMAIN" -w "$WEBROOT" --keylength ec-256 --force
-  /root/.acme.sh/acme.sh --install-cert -d "$DOMAIN" --ecc \
-    --key-file       "$CERT_DIR/privkey.pem" \
-    --fullchain-file "$CERT_DIR/fullchain.pem" \
-    --reloadcmd      "nginx -s reload"
 fi
+# install 无论新签与否都执行（幂等；也会把 --reloadcmd 注册进续期钩子）
+/root/.acme.sh/acme.sh --install-cert -d "$DOMAIN" --ecc \
+  --key-file       "$CERT_DIR/privkey.pem" \
+  --fullchain-file "$CERT_DIR/fullchain.pem" \
+  --reloadcmd      "nginx -s reload"
 
 say "3/6 写 443 vhost"
 [[ $DRY -eq 1 ]] && { echo "[dry-run] 将写 $VHOST_DIR/$DOMAIN-ssl.conf"; exit 0; }
@@ -84,7 +85,9 @@ say "6/6 公网自检"
 sleep 2
 hc=$(curl -s --noproxy '*' --max-time 15 "https://$DOMAIN/healthz")
 echo "  /healthz: $hc"
-echo "  无 key   : $(curl -s -o /dev/null -w '%{http_code}' --noproxy '*' --max-time 15 "https://$DOMAIN/v1/models" -H 'Authorization: Bearer wrong') （期望 401）"
+# 用**需鉴权**的 /capabilities 验（/v1/models 按设计免鉴权，测它永远是 200）
+echo "  无 key   : $(curl -s -o /dev/null -w '%{http_code}' --noproxy '*' --max-time 15 "https://$DOMAIN/capabilities") （期望 401）"
+echo "  错误 key : $(curl -s -o /dev/null -w '%{http_code}' --noproxy '*' --max-time 15 "https://$DOMAIN/capabilities" -H 'Authorization: Bearer wrong') （期望 401）"
 echo "  $KEY: $(curl -s -o /dev/null -w '%{http_code}' --noproxy '*' --max-time 15 "https://$DOMAIN/v1/models" -H "Authorization: Bearer $KEY") （期望 200）"
 echo "  /panel   : $(curl -s -o /dev/null -w '%{http_code}' --noproxy '*' --max-time 15 "https://$DOMAIN/panel") （期望 404）"
 echo

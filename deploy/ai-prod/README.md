@@ -36,8 +36,13 @@ curl -s --noproxy '*' http://127.0.0.1:39014/healthz   # 期望 version == <新�
 3. 写 `wenxin.1task.cn-ssl.conf` → nginx -t → reload
 4. 公网自检（无 key 401 / key 200 / panel 404）
 
-**DNS 是唯一前置**：`wenxin.1task.cn A 210.121.44.245`（阿里云 hichina，无泛解析，
-每个子域要单独加）。DNS 生效前脚本会在第 1 步直接退出。
+**DNS**：`wenxin.1task.cn A 210.121.44.245`（阿里云 hichina，无泛解析）——
+2026-11-18 已通过 jump 上的 `jdns add 1task.cn wenxin A 210.121.44.245` 添加
+（RecordId 2122862525552353280，ttl 600）。
+
+**已上线验证（2026-11-18）**：证书 LE ECC（至 2027-02-16，acme.sh cron 续期）；
+`/healthz` 0.0.19；`/capabilities` 无 key/错 key → 401、`sk-wenxin`/`sk-baidu` → 200；
+`/panel` `/stats` → 404；`/v1/models` 19 项；新域名 TTS 200 / 2.4s 音频。
 
 ## 管理面板只能走 SSH 隧道
 
