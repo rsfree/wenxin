@@ -176,6 +176,16 @@ async def resolve_input(
                 )
         return blob
 
+    if "://" in value[:16]:
+        # 看起来是 URL 但不是 http(s)：明确说清是 scheme 的问题，别让调用方
+        # 去怀疑自己给的图有问题（SSRF 准入门在 client 侧还会再判一次，双保险）。
+        scheme = value.split("://", 1)[0].lower()
+        raise ApiError(
+            400, "invalid_image_url",
+            f"外链只接受 http / https，收到 {scheme or '(空)'}://。"
+            "data URI 与裸 base64 是另外两种形态，不带 ://",
+        )
+
     if _B64_RE.match(value):
         try:
             data = base64.b64decode(re.sub(r"\s+", "", value), validate=True)

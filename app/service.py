@@ -90,6 +90,19 @@ def validate_request(
         )
 
     image = payload.get("image")
+    # `image` 只接受**字符串引用**（data URI / http(s) URL / 裸 base64）。
+    # 数组/对象在这里明确拒绝，而不是让它落进「缺少输入图片」—— 归因错了调用方
+    # 会去补图，真正的问题却是它用了本服务不支持的多图语义。
+    if image is not None and not isinstance(image, str):
+        empty = isinstance(image, (list, tuple)) and len(image) == 0
+        if not empty:
+            raise ApiError(
+                400, "invalid_image",
+                "image 必须是字符串（data URI / http(s) URL / 裸 base64）。"
+                "本服务上游是**单图语义**：不收数组，多图请分次调用",
+                image_type=type(image).__name__,
+            )
+        image = None                    # 空数组 = 没传（与 `null` 同义）
     if cap.needs_image and (not isinstance(image, str) or not image.strip()):
         raise ApiError(
             400, "missing_input",

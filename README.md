@@ -34,6 +34,7 @@ curl -s localhost:8700/v1/images/generations -H 'content-type: application/json'
 | 我想… | 看这里 |
 |---|---|
 | 接这个服务 | `docs/INTERFACE.md` |
+| 看图片契约与 image-adapter 的对齐 / 差异 / 残余风险 | `docs/IMAGE-CONTRACT.md` |
 | 改「谁能做什么 / 门禁」 | `app/models.py`（唯一能力注册表） |
 | 改上游请求构造 / SSE 解析 / 签名 | `app/upstream/baidu/capabilities.py`（纯函数，测试主战场） |
 | 改上游调用 / 凭据现取 / BOS 转存 / 出口池 | `app/upstream/baidu/client.py` |
@@ -69,6 +70,7 @@ app/models.py           能力注册表（19 项 + 9 项门禁 + 刻意缺席）
 app/service.py          校验 → 门禁 → 输入准备 → 调用 → 装配（响应唯一出口）
 app/main.py             HTTP 层（错误信封 / 鉴权 / 运维面 / /files）
 app/upstream/baidu/     翻译层（纯函数）+ HTTP 客户端（凭据/BOS/SSE/出口池）
+                        + netguard（外链代取的 SSRF 准入：scheme/私网/逐跳重定向）
 ```
 
 **两条纪律**（从 reverse-proxy 项目继承）：

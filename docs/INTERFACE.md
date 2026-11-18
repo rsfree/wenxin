@@ -59,7 +59,7 @@
 | 字段 | 必填 | 说明 |
 |---|---|---|
 | `model` | ✅ | `wenxin:<name>`（23 项，见 §7）；未注册名（含已撤的 `wenxin:reimagine`）⇒ 400 `unknown_model`；**未取证项**（如 `wenxin:ps`）⇒ 503 `capability_not_verified` |
-| `image` | ✅ | **三种形态**：data URI / http(s) URL / 裸 base64。类型**按真实字节嗅探**（png/jpeg/webp/bmp；**GIF 不收**） |
+| `image` | ✅ | **三种形态**：data URI / http(s) URL / 裸 base64。**只接受字符串** —— 数组/对象 ⇒ 400 `invalid_image`（本服务单图语义，多图请分次调用）；`[]` 等同没传。类型**按真实字节嗅探**（png/jpeg/webp/bmp；**GIF 不收**）。外链必须是公网地址：本机 / 内网 / 云元数据地址 ⇒ 400 `image_url_blocked` |
 | `mask` | ❌ | **只有「消除 / 局部替换 / 背景替换」消费**（这两个能力**必填**，缺 ⇒ 400 `missing_mask`）：**黑底 + 白框**的图片，**白色标记「要处理的区域」**；形态同 `image`。其余能力给了 mask ⇒ 忽略 + `warnings[]` 明示 |
 | `style` | ❌ | **只有「换风格」消费**（**必填**，缺 ⇒ 400 `missing_style`；未知值 ⇒ 400 `unknown_style` 并回 17 项候选）：风格 **id**（如 `miyazaki`）或**中文标签**（如 `宫崎骏风`）。17 项见 `/capabilities` 的 `styles`；请求时 id 进 `ext.style`、标签进 `ext.text` 与 TEXT query |
 | `response_format` | ❌ | `b64_json`（默认）/ `url`（落盘 + `/files/{name}`） |
@@ -138,6 +138,8 @@
 |---|---|---|---|---|
 | 参数/键集/模型错 | 400 | 各种本地 code | ❌ | 我们自己的报文，**不脱敏** |
 | 遮罩类能力缺 `mask` | 400 | `missing_mask` | ❌ | 含遮罩语义说明（白=要处理），触网前即拒 |
+| `image` 不是字符串（数组/对象） | 400 | `invalid_image` | ❌ | 单图语义；报文含 `image_type`，并说明「多图请分次调用」 |
+| 外链格式非法 / 目标是内网 | 400 | `invalid_image_url` / `image_url_blocked` | ❌ | 代取前的 SSRF 准入（`app/upstream/baidu/netguard.py`） |
 | 排队超上限（本地速率闸门） | 429 | `rate_limited` / `capacity` | ✅（退避） | 带 `Retry-After` |
 | **命中昆仑风控** | 429 | `risk_control` | ❌ **别重试** | 带 `Retry-After`= 冷却剩余；重试会延长标记 |
 | 冷却窗内再请求（**无兜底通路**的能力） | 429 | `risk_control_cooldown` | ❌ | 有映射的能力窗内**改走老接口**，不 429 |
@@ -164,6 +166,7 @@
 | 未配 cookie | 503 | ✅ 放行 | 干跑不触网 |
 | 昆仑冷却窗 | 429（无兜底通路时） | ✅ 放行 | 窗口是进程内状态，`/readyz` 可见 |
 | 速率闸门（串行+最小间隔+每分钟上限） | 排队/429 | ✅ 放行 | dry_run 不占名额 |
+| 外链目标（SSRF 准入） | 400 `image_url_blocked` | ✅ 放行 | 干跑不触网、不做代取；真跑在**发起连接前**判（`netguard.check_url`） |
 
 ---
 
@@ -193,7 +196,7 @@
 | `wenxin:textreplace` | 文字替换 | ⛔ **2026-11-16 复验 3 次（2 类输入）只回编辑器链接**，同 ps/matting-pro 形态 ⇒ 默认不可用（`BAIDU_ALLOW_UNVERIFIED=1` 可放开） |
 | `wenxin:restore` / `wenxin:removeperson` / `wenxin:removetext` | 图片修复 / 去路人 / 去文字 | ✅ |
 | `wenxin:filter` / `wenxin:beauty` / `wenxin:ps` | 滤镜 / 美颜 / P图 | ✅ |
-| `wenxin:dewatermark` | 去水印 | ⛔ 主链未取证（复测为编辑器形态）；**开 `BAIDU_LEGACY` 后经老接口可用**（type=1） |
+| `wenxin:dewatermark` | 去水印 | ⛔ 主链未取证（复测为编辑器形态）；**开 `BAIDU_LEGACY` 后经老接口可用**（type=1）。**2026-11-18 端到端复验**：2048² 带水印照片→819²/90KB→4.9s 出图（入参判据「宽 ≥600」见 UPSTREAM §10） |
 | `wenxin:erase` | 消除（**需 `mask`**） | ⛔ 主链遮罩参数未逆向；**开 `BAIDU_LEGACY` 后经老接口可用**（type=8，遮罩实测生效） |
 | `wenxin:replace` | 局部替换（**需 `mask`**，可选 `prompt`） | ⛔ 同上；**开 `BAIDU_LEGACY` 后经老接口可用**（type=5，`prompt`→`text`） |
 | `wenxin:redraw` / `wenxin:similar` | AI重绘 / 相似图 | ⛔ **legacy-only**（主链形态未坐实）：**开 `BAIDU_LEGACY` 后经老接口可用**（type=6/7 + 档位） |

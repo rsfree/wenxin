@@ -59,6 +59,7 @@ from .capabilities import (
     extract_legacy_result,
     legacy_form,
 )
+from .netguard import check_url, redact_url
 
 __all__ = ["BaiduClient", "Credentials"]
 
@@ -71,6 +72,9 @@ _MB = 1024 * 1024
 
 #: 代取/结果下载的独立超时（与上游处理超时无关）。
 _FETCH_TIMEOUT = 30.0
+
+#: 外链取回的重定向逐跳上限（超过即失败，不无限跟）。
+_MAX_REDIRECTS = 5
 
 
 def fit_legacy_image(data: bytes, *, max_side: int, max_bytes: int
@@ -370,38 +374,61 @@ class BaiduClient:
                           timeout: float | None = None) -> tuple[bytes, str | None]:
         """单次取回（不做重试）。预检 `Content-Length` + 读流封顶双保险；
         取不到就显式失败，**绝不把半个文件当完整内容用**。
+
+        🔴 重定向**自己跟**（`follow_redirects=False`）：httpx 的自动跟随会把
+        「逐跳校验」这个唯一拦截点吃掉 —— 一个 `302 → 127.0.0.1` 就绕过准入门。
+        报文里的 URL 一律过 `redact_url`：上游 CDN 的签名参数不能进错误体。
         """
-        declared_ct: str | None = None
-        chunks: list[bytes] = []
-        total = 0
-        try:
-            async with self._client.stream("GET", url, timeout=timeout or _FETCH_TIMEOUT,
-                                           follow_redirects=True) as resp:
-                if resp.status_code >= 400:
-                    raise UpstreamUnavailableError(
-                        f"取回失败：HTTP {resp.status_code}（{url[:120]}）",
-                        http_status=resp.status_code,
-                    )
-                declared_ct = resp.headers.get("content-type")
-                declared_len = resp.headers.get("content-length")
-                if declared_len and declared_len.isdigit() and int(declared_len) > max_bytes:
-                    raise ApiError(
-                        400, "content_too_large",
-                        f"取回内容超过上限（{declared_len} 字节 > {max_bytes} 字节）",
-                    )
-                async for chunk in resp.aiter_bytes():
-                    total += len(chunk)
-                    if total > max_bytes:
+        current = url
+        for _hop in range(_MAX_REDIRECTS + 1):
+            await check_url(current)
+            try:
+                async with self._client.stream(
+                    "GET", current, timeout=timeout or _FETCH_TIMEOUT,
+                    follow_redirects=False,
+                ) as resp:
+                    if resp.is_redirect:
+                        location = resp.headers.get("location")
+                        if not location:
+                            raise UpstreamUnavailableError(
+                                f"取回失败：HTTP {resp.status_code} 重定向但缺少 "
+                                f"Location（{redact_url(current)}）",
+                                http_status=resp.status_code,
+                            )
+                        current = str(resp.url.join(location))
+                        continue
+                    if resp.status_code >= 400:
+                        raise UpstreamUnavailableError(
+                            f"取回失败：HTTP {resp.status_code}（{redact_url(current)}）",
+                            http_status=resp.status_code,
+                        )
+                    declared_ct = resp.headers.get("content-type")
+                    declared_len = resp.headers.get("content-length")
+                    if declared_len and declared_len.isdigit() and int(declared_len) > max_bytes:
                         raise ApiError(
                             400, "content_too_large",
-                            f"取回内容超过上限（已读 {total} 字节 > {max_bytes} 字节）",
+                            f"取回内容超过上限（{declared_len} 字节 > {max_bytes} 字节）",
                         )
-                    chunks.append(chunk)
-        except httpx.TimeoutException as exc:
-            raise UpstreamTimeout(f"取回超时（{url[:120]}）") from exc
-        except httpx.HTTPError as exc:
-            raise UpstreamUnavailableError(f"取回网络错误：{exc}") from exc
-        return b"".join(chunks), declared_ct
+                    chunks: list[bytes] = []
+                    total = 0
+                    async for chunk in resp.aiter_bytes():
+                        total += len(chunk)
+                        if total > max_bytes:
+                            raise ApiError(
+                                400, "content_too_large",
+                                f"取回内容超过上限（已读 {total} 字节 > {max_bytes} 字节）",
+                            )
+                        chunks.append(chunk)
+                    return b"".join(chunks), declared_ct
+            except httpx.TimeoutException as exc:
+                raise UpstreamTimeout(f"取回超时（{redact_url(current)}）") from exc
+            except httpx.HTTPError as exc:
+                raise UpstreamUnavailableError(
+                    f"取回网络错误（{redact_url(current)}）：{type(exc).__name__}"
+                ) from exc
+        raise UpstreamUnavailableError(
+            f"重定向超过 {_MAX_REDIRECTS} 跳（{redact_url(url)}）"
+        )
 
     # ------------------------------------------------------------------ BOS 转存
 

@@ -331,12 +331,34 @@ def test_request_validation_errors(tmp_path):
           "response_format": "nope"}, "invalid_response_format"),
         ({"model": "wenxin:clarity", "image": data_uri(PNG_SMALL), "size": 42},
          "invalid_size"),
+        # `image` 只收字符串引用：数组/对象必须**明确**报 invalid_image，
+        # 不能落进 missing_input（那会让调用方去补图，而真正的问题是多图语义）。
+        ({"model": "wenxin:clarity", "image": [data_uri(PNG_SMALL)]}, "invalid_image"),
+        ({"model": "wenxin:clarity", "image": {"url": "https://x/a.png"}}, "invalid_image"),
+        ({"model": "wenxin:draw", "prompt": "一只猫", "image": [data_uri(PNG_SMALL)]},
+         "invalid_image"),
     ]
     with TestClient(app) as c:
         for payload, code in cases:
             r = _post(c, payload)
             assert r.status_code == 400, (payload, r.text)
             assert r.json()["error"]["code"] == code, (payload, r.text)
+
+
+def test_empty_image_array_means_absent(tmp_path):
+    """`image: []` = 没传（与 `null` 同义，image-adapter §6 的空数组语义）。
+
+    图生图能力 ⇒ `missing_input`（要图没给图）；文生图 ⇒ 放行（本来就是无图模式）。
+    """
+    app, _ = _app(tmp_path)
+    with TestClient(app) as c:
+        r = _post(c, {"model": "wenxin:clarity", "image": []})
+        assert r.status_code == 400 and r.json()["error"]["code"] == "missing_input"
+
+        r = _post(c, {"model": "wenxin:draw", "prompt": "一只猫", "image": [],
+                      "dry_run": True})
+        assert r.status_code == 200, r.text
+        assert r.json()["dry_run"] is True
 
 
 def test_known_unsupported_fields_are_reported_not_swallowed(tmp_path):
@@ -600,8 +622,8 @@ def test_index_is_public_landing_page(tmp_path):
 def test_legacy_large_input_is_auto_downscaled(tmp_path):
     """老接口入参超限 ⇒ **自动等比压缩**并如实告警（不再直接失败）。
 
-    依据（2026-09-24 实测）：type=1 在 600×400/39.9KB 收单、800×533/63.2KB 被拒 ⇒
-    服务端把大图压到 `LEGACY_MAX_IMAGE_*` 以内再提交，并在 `warnings` 里说明。
+    依据（2026-11-18 复验，docs/UPSTREAM.md §10）：老接口真正卡的是「宽度 ≥600 且质量不塌」，
+    不是"字节越小越好"；服务端仍按 `LEGACY_MAX_IMAGE_*` 收敛入参，并在 `warnings` 里说明。
     """
     app, _ = _app(tmp_path, LEGACY="fallback")     # erase 走老接口（requires_mask ⇒ 直通）
     buf = io.BytesIO()
@@ -617,12 +639,14 @@ def test_legacy_large_input_is_auto_downscaled(tmp_path):
     body = r.json()
     fitted = (body.get("upstream", {}).get("legacy") or {}).get("fitted")
     assert fitted, "必须记录压缩前后（不许静默变形）"
-    assert fitted["to_size"][0] <= 640 and fitted["bytes_out"] <= 40000, fitted
+    conf = app.state.settings
+    assert fitted["to_size"][0] <= conf.LEGACY_MAX_IMAGE_SIDE, fitted
+    assert fitted["bytes_out"] <= conf.LEGACY_MAX_IMAGE_BYTES, fitted
     assert any("自动等比压缩" in w for w in body["warnings"]), body["warnings"]
     # 上游真收到的是**缩后**的图（不是原图）—— 用 spy 记录的提交表单核对
     sent = spy.legacy_forms[-1]
     got = len(sent["picInfo"]) * 3 // 4
-    assert got <= 40000, f"上游收到 {got} 字节，未压缩？"
+    assert got <= conf.LEGACY_MAX_IMAGE_BYTES, f"上游收到 {got} 字节，未压缩？"
 
 
 def helpers_size_mask() -> bytes:
